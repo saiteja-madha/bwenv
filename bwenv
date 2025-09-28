@@ -56,7 +56,7 @@ CMD="${1:-}"; shift || true
 
 # --- helpers ---
 json_list() {
-  bws secret list --project-id "$PROJECT_ID" -o json
+  bws secret list "$PROJECT_ID" -o json
 }
 
 get_env_lines() {
@@ -64,14 +64,14 @@ get_env_lines() {
   local json; json="$(json_list)"
   local app_lines
   app_lines="$(echo "$json" | jq -r --arg pfx "${app}__" '
-    .[] | select(.name | startswith($pfx))
-    | "\(.name | sub("^" + $pfx; ""))=\(.value)"
+    .[] | select((.key // "") | type == "string" and startswith($pfx))
+    | "\(.key | sub("^" + $pfx; ""))=\(.value)"
   ')"
   if $INCLUDE_SHARED; then
     local shared_lines
     shared_lines="$(echo "$json" | jq -r '
-      .[] | select(.name | startswith("shared__"))
-      | "\(.name | sub("^shared__"; ""))=\(.value)"
+      .[] | select((.key // "") | type == "string" and startswith("shared__"))
+      | "\(.key | sub("^shared__"; ""))=\(.value)"
     ')"
     printf "%s\n%s\n" "$app_lines" "$shared_lines" | sed '/^$/d'
     return
@@ -81,7 +81,7 @@ get_env_lines() {
 
 secret_id() {
   local name="$1"
-  json_list | jq -r --arg n "$name" '.[] | select(.name==$n) | .id' | head -n1
+  json_list | jq -r --arg n "$name" '.[] | select(.key==$n) | .id' | head -n1
 }
 
 upsert_secret() {
@@ -89,12 +89,12 @@ upsert_secret() {
   local sid; sid="$(secret_id "$full_name" || true)"
   if [[ -n "$sid" ]]; then
     if $DRY_RUN; then echo "[dry-run] update $full_name" >&2
-    else bws secret update --id "$sid" --name "$full_name" --value "$value" >/dev/null
+    else bws secret edit --key "$full_name" --value "$value" --project-id "$PROJECT_ID" "$sid" >/dev/null
          echo "updated: $full_name" >&2
     fi
   else
     if $DRY_RUN; then echo "[dry-run] create $full_name" >&2
-    else bws secret create --project-id "$PROJECT_ID" --name "$full_name" --value "$value" >/dev/null
+    else bws secret create "$full_name" "$value" "$PROJECT_ID" >/dev/null
          echo "created: $full_name" >&2
     fi
   fi
@@ -130,7 +130,7 @@ case "$CMD" in
     APP="${1:-}"
     [[ -n "$APP" ]] || { echo "Usage: bwenv list <app>"; exit 1; }
     json_list | jq -r --arg pfx "${APP}__" '
-      .[] | select(.name | startswith($pfx)) | "\(.name | sub("^" + $pfx; ""))"
+      .[] | select((.key // "") | type == "string" and startswith($pfx)) | "\(.key | sub("^" + $pfx; ""))"
     '
     ;;
 
@@ -142,13 +142,9 @@ case "$CMD" in
 
   run)
     APP="${1:-}"; shift || true
-    [[ -n "$APP" ]] || { echo "Usage: bwenv run <app> [--include-shared] -- <command> [args...]"; exit 1; }
-    if [[ "${1:-}" != "--" ]]; then
-      echo "Please separate the command with --" >&2
-      echo "Example: bwenv run notes-api -- flask run" >&2
-      exit 1
-    fi
-    shift
+    [[ -n "$APP" ]] || { echo "Usage: bwenv run <app> [--include-shared] <command> [args...]"; exit 1; }
+
+    # Everything left is the command
     [[ $# -ge 1 ]] || { echo "Provide a command to run"; exit 1; }
     ENVS="$(get_env_lines "$APP" | xargs)"
     echo "Running: $*  (env: $APP${INCLUDE_SHARED:+ + shared})" >&2
