@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# bwenv - Bitwarden Secrets Manager helper for local dev
+# Commands: add | load | list | pull | run
+#
+# Prefix convention: <app>__KEY  (e.g., notes-api__DATABASE_URL)
+#
+# Usage:
+#   bwenv add  <app> KEY VALUE
+#   bwenv add  <app> KEY=VALUE
+#   bwenv load <app> path/to/.env [--dry-run]
+#   bwenv list <app>
+#   bwenv pull <app> [--include-shared]
+#   bwenv run  <app> [--include-shared] -- <command> [args...]
+#
+# Global env:
+#   BWS_ACCESS_TOKEN   (required) - Bitwarden Secrets Manager machine token
+#   BWS_PROJECT_ID     (default project UUID; can be overridden by --project-id)
+#
+# Flags:
+#   --project-id <UUID>    Use a specific project (overrides BWS_PROJECT_ID)
+#   --include-shared       Also inject SHARED__* secrets (as KEY without prefix)
+#   --dry-run              For create/update operations, do not change anything
+#   -h | --help            Show this header
+#
+# Requires: bws, jq
+
+set -euo pipefail
+
+PROJECT_ID="${BWS_PROJECT_ID:-}"
+DRY_RUN=false
+INCLUDE_SHARED=false
+
+need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 1; }; }
+need bws
+need jq
+[[ -n "${BWS_ACCESS_TOKEN:-}" ]] || { echo "Error: BWS_ACCESS_TOKEN is not set."; exit 1; }
+
+# Parse global flags (before subcommand)
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project-id) PROJECT_ID="$2"; shift 2 ;;
+    --include-shared) INCLUDE_SHARED=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    -h|--help) sed -n '1,120p' "$0"; exit 0 ;;
+    --) shift; break ;;
+    *) POSITIONAL+=("$1"); shift ;;
+  esac
+done
+set -- "${POSITIONAL[@]}" "$@"
+
+[[ -n "${PROJECT_ID:-}" ]] || { echo "Error: No project specified. Set BWS_PROJECT_ID or pass --project-id."; exit 1; }
+
+CMD="${1:-}"; shift || true
+[[ -n "$CMD" ]] || { echo "Error: Command required: add|load|list|pull|run"; exit 1; }
+
+# --- helpers ---
+json_list() {
+  bws secret list --project-id "$PROJECT_ID" -o json
+}
+
+get_env_lines() {
+  local app="$1"
+  local json; json="$(json_list)"
+  local app_lines
+  app_lines="$(echo "$json" | jq -r --arg pfx "${app}__" '
+    .[] | select(.name | startswith($pfx))
+    | "\(.name | sub("^" + $pfx; ""))=\(.value)"
+  ')"
+  if $INCLUDE_SHARED; then
+    local shared_lines
+    shared_lines="$(echo "$json" | jq -r '
+      .[] | select(.name | startswith("shared__"))
+      | "\(.name | sub("^shared__"; ""))=\(.value)"
+    ')"
+    printf "%s\n%s\n" "$app_lines" "$shared_lines" | sed '/^$/d'
+    return
+  fi
+  printf "%s\n" "$app_lines" | sed '/^$/d'
+}
+
+secret_id() {
+  local name="$1"
+  json_list | jq -r --arg n "$name" '.[] | select(.name==$n) | .id' | head -n1
+}
+
+upsert_secret() {
+  local full_name="$1"; local value="$2"
+  local sid; sid="$(secret_id "$full_name" || true)"
+  if [[ -n "$sid" ]]; then
+    if $DRY_RUN; then echo "[dry-run] update $full_name" >&2
+    else bws secret update --id "$sid" --name "$full_name" --value "$value" >/dev/null
+         echo "updated: $full_name" >&2
+    fi
+  else
+    if $DRY_RUN; then echo "[dry-run] create $full_name" >&2
+    else bws secret create --project-id "$PROJECT_ID" --name "$full_name" --value "$value" >/dev/null
+         echo "created: $full_name" >&2
+    fi
+  fi
+}
+
+case "$CMD" in
+  add)
+    APP="${1:-}"; shift || true
+    [[ -n "$APP" ]] || { echo "Usage: bwenv add <app> KEY VALUE|KEY=VALUE"; exit 1; }
+    if [[ $# -eq 1 && "$1" == *"="* ]]; then
+      KEY="${1%%=*}"; VAL="${1#*=}"
+    else
+      KEY="${1:-}"; VAL="${2:-}"
+    fi
+    [[ -n "${KEY:-}" && -n "${VAL:-}" ]] || { echo "Provide KEY and VALUE"; exit 1; }
+    upsert_secret "${APP}__${KEY}" "$VAL"
+    ;;
+
+  load)
+    APP="${1:-}"; FILE="${2:-}"
+    [[ -n "$APP" && -n "$FILE" ]] || { echo "Usage: bwenv load <app> path/to/..env [--dry-run]"; exit 1; }
+    [[ -f "$FILE" ]] || { echo "File not found: $FILE"; exit 1; }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -z "$line" || "$line" =~ ^\s*# ]] && continue
+      if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+        KEY="${line%%=*}"; VAL="${line#*=}"
+        upsert_secret "${APP}__${KEY}" "$VAL"
+      fi
+    done < "$FILE"
+    ;;
+
+  list)
+    APP="${1:-}"
+    [[ -n "$APP" ]] || { echo "Usage: bwenv list <app>"; exit 1; }
+    json_list | jq -r --arg pfx "${APP}__" '
+      .[] | select(.name | startswith($pfx)) | "\(.name | sub("^" + $pfx; ""))"
+    '
+    ;;
+
+  pull)
+    APP="${1:-}"
+    [[ -n "$APP" ]] || { echo "Usage: bwenv pull <app> [--include-shared]"; exit 1; }
+    get_env_lines "$APP"
+    ;;
+
+  run)
+    APP="${1:-}"; shift || true
+    [[ -n "$APP" ]] || { echo "Usage: bwenv run <app> [--include-shared] -- <command> [args...]"; exit 1; }
+    if [[ "${1:-}" != "--" ]]; then
+      echo "Please separate the command with --" >&2
+      echo "Example: bwenv run notes-api -- flask run" >&2
+      exit 1
+    fi
+    shift
+    [[ $# -ge 1 ]] || { echo "Provide a command to run"; exit 1; }
+    ENVS="$(get_env_lines "$APP" | xargs)"
+    echo "Running: $*  (env: $APP${INCLUDE_SHARED:+ + shared})" >&2
+    env $ENVS "$@"
+    ;;
+
+  *)
+    echo "Unknown command: $CMD"; exit 1;;
+esac
