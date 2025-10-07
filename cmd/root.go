@@ -22,8 +22,6 @@ var rootCmd = &cobra.Command{
 	Short: "Bitwarden Secrets Manager helper for local dev",
 	Long: `bwenv - Bitwarden Secrets Manager helper for local dev
 
-Prefix convention: <app>__KEY  (e.g., notes-api__DATABASE_URL)
-
 Global env:
   BWS_ACCESS_TOKEN   (required) - Bitwarden Secrets Manager machine token  
   BWS_PROJECT_ID     (default project UUID; can be overridden by --project-id)
