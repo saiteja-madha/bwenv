@@ -7,9 +7,24 @@ A tiny helper for **Bitwarden Secrets Manager** (`bws`) to manage app-specific e
 
 ## Install
 
+### Pre-built Binary (Recommended)
+
+**One-liner install (macOS/Linux):**
 ```bash
-curl -fsSL -o /usr/local/bin/bwenv https://raw.githubusercontent.com/saiteja-madha/bwenv/main/bwenv
-chmod +x /usr/local/bin/bwenv
+curl -fsSL https://raw.githubusercontent.com/saiteja-madha/bwenv/main/install.sh | bash
+```
+
+**Manual Download:**
+1. Go to [Releases](https://github.com/saiteja-madha/bwenv/releases)
+2. Download the binary for your platform
+3. Make it executable and add to your PATH
+
+### Build from Source
+```bash
+git clone https://github.com/saiteja-madha/bwenv.git
+cd bwenv
+make build
+make install  # or copy ./bwenv to your PATH
 ```
 
 ## Requirements
