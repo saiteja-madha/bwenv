@@ -34,8 +34,12 @@ func CheckDependencies() error {
 	if err := checkCommand("jq"); err != nil {
 		return fmt.Errorf("missing dependency: jq")
 	}
-	if os.Getenv("BWS_ACCESS_TOKEN") == "" {
+	token := os.Getenv("BWS_ACCESS_TOKEN")
+	if token == "" {
 		return fmt.Errorf("BWS_ACCESS_TOKEN is not set")
+	}
+	if parts := strings.SplitN(token, ".", 2); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("BWS_ACCESS_TOKEN is invalid: expected format <client_id>.<client_secret>")
 	}
 	return nil
 }

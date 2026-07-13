@@ -15,7 +15,21 @@ Summary of fixes applied during the initial codebase audit (July 2026).
 
 ## Issue \#12 — Security hardening
 
-**Scope:** Error messages use secret name (`app__KEY`) not value. No value leaks exist. The process-list visibility is an inherent `bws` limitation documented in AGENTS.md.
+### Audit findings (July 2026)
+
+**HIGH: install.sh had no integrity verification.** Binary downloaded and installed to `/usr/local/bin` without checksum check. Fix: download `checksums.txt` from the release, verify `sha256sum` before install, abort on mismatch.
+
+**MEDIUM: install.sh curl without `--fail`.** HTTP error pages (429, 404) would be written as the binary. Fix: added `-f` flag to all curl calls.
+
+**MEDIUM: install.sh parsed GitHub API with `grep | cut`.** Fragile JSON parsing. Fix: use `jq` (already a runtime dependency of bwenv).
+
+**MEDIUM: install.sh no sudo fallback.** Writing to `/usr/local/bin` silently failed without root. Fix: check write permission, offer `sudo` escalation.
+
+**LOW: BWS_ACCESS_TOKEN format not validated.** Only checked emptiness. Fix: validate `<client_id>.<client_secret>` format on load.
+
+### Previously addressed
+
+Error messages use secret name (`app__KEY`) not value. No value leaks exist. The process-list visibility is an inherent `bws` limitation documented in AGENTS.md.
 
 ## Issue \#1 — GitHub Actions CI/CD
 
