@@ -18,6 +18,7 @@ type Secret struct {
 // Client wraps BWS operations
 type Client struct {
 	ProjectID string
+	Verbose   bool
 }
 
 // NewClient creates a new BWS client
@@ -39,9 +40,24 @@ func CheckDependencies() error {
 	return nil
 }
 
+func (c *Client) logCmd(cmd *exec.Cmd, maskArgs ...int) {
+	if !c.Verbose {
+		return
+	}
+	args := make([]string, len(cmd.Args))
+	copy(args, cmd.Args)
+	for _, i := range maskArgs {
+		if i < len(args) {
+			args[i] = "***"
+		}
+	}
+	fmt.Fprintf(os.Stderr, "[bws] %s\n", strings.Join(args, " "))
+}
+
 // ListSecrets fetches all secrets from the project
 func (c *Client) ListSecrets() ([]Secret, error) {
 	cmd := exec.Command("bws", "secret", "list", c.ProjectID, "-o", "json")
+	c.logCmd(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
@@ -88,6 +104,7 @@ func (c *Client) CreateSecret(name, value string, dryRun bool) error {
 	}
 
 	cmd := exec.Command("bws", "secret", "create", name, value, c.ProjectID)
+	c.logCmd(cmd, 4)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create secret %s: %w", name, err)
 	}
@@ -106,6 +123,7 @@ func (c *Client) UpdateSecret(id, name, value string, dryRun bool) error {
 	}
 
 	cmd := exec.Command("bws", "secret", "edit", "--key", name, fmt.Sprintf("--value=%s", value), fmt.Sprintf("--project-id=%s", c.ProjectID), id)
+	c.logCmd(cmd, 5)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to update secret %s: %w", name, err)
 	}
@@ -133,6 +151,11 @@ func (c *Client) GetEnvLines(app string, includeShared bool) ([]string, error) {
 		return nil, err
 	}
 
+	return FilterEnvLines(secrets, app, includeShared), nil
+}
+
+// FilterEnvLines filters secrets into KEY=VALUE lines for the given app
+func FilterEnvLines(secrets []Secret, app string, includeShared bool) []string {
 	var lines []string
 	prefix := app + "__"
 
@@ -155,7 +178,7 @@ func (c *Client) GetEnvLines(app string, includeShared bool) ([]string, error) {
 		}
 	}
 
-	return lines, nil
+	return lines
 }
 
 // GetAppKeys returns all keys for an app (without prefix)
@@ -165,6 +188,11 @@ func (c *Client) GetAppKeys(app string) ([]string, error) {
 		return nil, err
 	}
 
+	return FilterAppKeys(secrets, app), nil
+}
+
+// FilterAppKeys filters secrets into key names for the given app (without prefix)
+func FilterAppKeys(secrets []Secret, app string) []string {
 	var keys []string
 	prefix := app + "__"
 
@@ -175,7 +203,7 @@ func (c *Client) GetAppKeys(app string) ([]string, error) {
 		}
 	}
 
-	return keys, nil
+	return keys
 }
 
 func checkCommand(name string) error {

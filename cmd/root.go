@@ -13,6 +13,7 @@ var (
 	projectID     string
 	dryRun        bool
 	includeShared bool
+	verbose       bool
 	bwsClient     *bws.Client
 )
 
@@ -43,6 +44,7 @@ Requires: bws, jq`,
 
 		// Initialize BWS client
 		bwsClient = bws.NewClient(projectID)
+		bwsClient.Verbose = verbose
 		return nil
 	},
 }
@@ -58,4 +60,5 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&projectID, "project-id", "", "Project UUID (overrides BWS_PROJECT_ID)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Don't make changes")
 	rootCmd.PersistentFlags().BoolVar(&includeShared, "include-shared", false, "Include shared secrets")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 }
