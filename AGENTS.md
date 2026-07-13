@@ -68,3 +68,22 @@ shared__KEY          → shared__LOG_LEVEL
 make run ARGS="list myapp"   # build + run with args
 go build -o bwenv && ./bwenv --help
 ```
+
+## Documentation
+
+Keep docs in `docs/`. Structure:
+
+```
+docs/
+├── README.md          # index, points to entry docs
+├── decisions/         # ADR-style design records
+└── guides/            # step-by-step how-tos (when needed)
+```
+
+Rules:
+- Prefer small modular files over one large document
+- Update existing docs before creating new ones
+- Remove stale or redundant documentation
+- Keep docs close to the code they describe when practical
+- Verify internal links are valid after changes
+- docs/README.md is the index — explain what exists, where, and who it is for

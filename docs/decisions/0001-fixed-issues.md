@@ -1,0 +1,47 @@
+# Fixed Issues and Design Decisions
+
+Summary of fixes applied during the initial codebase audit (July 2026).
+
+## Issue \#2 — Special characters, null bytes, and empty values
+
+**Problem:** Secret values with null bytes silently truncated via `execve`. Values starting with `-` misinterpreted by `bws`'s clap parser. Empty values mis-rejected.
+
+**Fix:**
+- Added `validateValue()` in `internal/bws/client.go` — rejects null bytes with a clear error
+- Changed `UpdateSecret` from `--value <val>` to `--value=<val>` — prevents clap flag misinterpretation
+- Removed `value == ""` guard in `cmd/add.go` — empty env vars are valid
+
+**Trade-off:** Values remain visible in process lists (`ps`). `bws` v2.x has no stdin path for values.
+
+## Issue \#12 — Security hardening
+
+**Scope:** Error messages use secret name (`app__KEY`) not value. No value leaks exist. The process-list visibility is an inherent `bws` limitation documented in AGENTS.md.
+
+## Issue \#1 — GitHub Actions CI/CD
+
+- CI builds + tests on ubuntu/macos/windows for push/PR to `main`
+- Release builds all platforms + `sha256sum` on `v*` tag push
+- Linting via golangci-lint (gofmt, govet, staticcheck, revive, etc.)
+- CodeQL security analysis weekly
+
+## Issue \#5 — Tests
+
+Extracted `FilterEnvLines`/`FilterAppKeys` as standalone functions for unit testing without a `bws` binary. Tests cover validation, filtering, and key extraction.
+
+## Issue \#8 — Shell completion
+
+`bwenv completion [bash|zsh|fish]` using cobra's built-in generators.
+
+## Issue \#6 — Verbose mode
+
+`--verbose`/`-v` flag logs `bws` commands with secret values masked (`***`).
+
+## Design Decisions
+
+### Value masking in verbose logging
+
+`logCmd()` accepts arg indices to mask. Create masks index 4 (value), Edit masks index 5 (`--value=...`). The arg is replaced with `***` before printing.
+
+### Testability
+
+`FilterEnvLines` and `FilterAppKeys` are exported package-level functions operating on `[]Secret`. Tests construct mock secret lists directly — no `bws` binary needed.
