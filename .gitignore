@@ -27,3 +27,9 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Go distribution
+go*.tar.gz
+
+# Temp files
+*.full
