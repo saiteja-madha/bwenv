@@ -70,8 +70,18 @@ func (c *Client) GetSecretID(name string) (string, error) {
 	return "", nil
 }
 
+func validateValue(value string) error {
+	if strings.ContainsRune(value, 0) {
+		return fmt.Errorf("value contains null byte")
+	}
+	return nil
+}
+
 // CreateSecret creates a new secret
 func (c *Client) CreateSecret(name, value string, dryRun bool) error {
+	if err := validateValue(value); err != nil {
+		return fmt.Errorf("invalid value for %s: %w", name, err)
+	}
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "[dry-run] create %s\n", name)
 		return nil
@@ -79,7 +89,7 @@ func (c *Client) CreateSecret(name, value string, dryRun bool) error {
 
 	cmd := exec.Command("bws", "secret", "create", name, value, c.ProjectID)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
+		return fmt.Errorf("failed to create secret %s: %w", name, err)
 	}
 	fmt.Fprintf(os.Stderr, "created: %s\n", name)
 	return nil
@@ -87,14 +97,17 @@ func (c *Client) CreateSecret(name, value string, dryRun bool) error {
 
 // UpdateSecret updates an existing secret
 func (c *Client) UpdateSecret(id, name, value string, dryRun bool) error {
+	if err := validateValue(value); err != nil {
+		return fmt.Errorf("invalid value for %s: %w", name, err)
+	}
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "[dry-run] update %s\n", name)
 		return nil
 	}
 
-	cmd := exec.Command("bws", "secret", "edit", "--key", name, "--value", value, "--project-id", c.ProjectID, id)
+	cmd := exec.Command("bws", "secret", "edit", "--key", name, fmt.Sprintf("--value=%s", value), fmt.Sprintf("--project-id=%s", c.ProjectID), id)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to update secret: %w", err)
+		return fmt.Errorf("failed to update secret %s: %w", name, err)
 	}
 	fmt.Fprintf(os.Stderr, "updated: %s\n", name)
 	return nil

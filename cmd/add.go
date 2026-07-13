@@ -30,8 +30,8 @@ Usage:
 			return fmt.Errorf("provide KEY and VALUE")
 		}
 
-		if key == "" || value == "" {
-			return fmt.Errorf("provide KEY and VALUE")
+		if key == "" {
+			return fmt.Errorf("key cannot be empty")
 		}
 
 		fullName := fmt.Sprintf("%s__%s", app, key)
