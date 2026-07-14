@@ -202,7 +202,7 @@ func TestRunStripsTokenAndAppliesSharedPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stdout != "app" {
+	if strings.TrimRight(stdout, "\r\n") != "app" {
 		t.Fatalf("unexpected child output: %q", stdout)
 	}
 }
