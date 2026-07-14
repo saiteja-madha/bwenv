@@ -27,3 +27,14 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Go distribution
+go*.tar.gz
+
+# Temp files
+*.full
+
+# Local environment files may contain secrets
+.env
+.env.*
+!.env.example

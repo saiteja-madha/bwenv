@@ -6,18 +6,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newListCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
+func newExportCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 	var includeShared bool
 	command := &cobra.Command{
-		Use:   "list <app>",
-		Short: "List an application's environment variables",
+		Use:   "export <app>",
+		Short: "Export an application's effective environment",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := loadEntries(cmd, cfg, deps, args[0], includeShared)
 			if err != nil {
 				return err
 			}
-			return outputrenderer.RenderEntries(deps.stdout, entries, cfg.output, false, cfg.color)
+			format := cfg.output
+			if !cmd.Root().PersistentFlags().Changed("output") {
+				format = "env"
+			}
+			return outputrenderer.RenderEntries(deps.stdout, entries, format, false, cfg.color)
 		},
 	}
 	needsSecrets(command)
