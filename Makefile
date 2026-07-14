@@ -1,30 +1,52 @@
-.PHONY: build build-all clean install test
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -s -w -X bwenv/cmd.Version=$(VERSION) -X bwenv/cmd.Commit=$(COMMIT) -X bwenv/cmd.Date=$(BUILD_DATE)
+PREFIX ?= /usr/local
+DESTDIR ?=
 
-# Build for current platform
+.PHONY: build build-all clean install test test-race fmt fmt-check vet lint verify run
+
 build:
-	go build -o bwenv
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bwenv .
 
-# Build for all platforms
 build-all: clean
 	mkdir -p dist
-	GOOS=darwin GOARCH=amd64 go build -o dist/bwenv-darwin-amd64
-	GOOS=darwin GOARCH=arm64 go build -o dist/bwenv-darwin-arm64
-	GOOS=linux GOARCH=amd64 go build -o dist/bwenv-linux-amd64
-	GOOS=linux GOARCH=arm64 go build -o dist/bwenv-linux-arm64
-	GOOS=windows GOARCH=amd64 go build -o dist/bwenv-windows-amd64.exe
+	GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/bwenv-darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/bwenv-darwin-arm64 .
+	GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/bwenv-linux-amd64 .
+	GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/bwenv-linux-arm64 .
+	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/bwenv-windows-amd64.exe .
 
-# Clean build artifacts
 clean:
-	rm -rf dist/ bwenv bwenv.exe
+	rm -rf dist bwenv bwenv.exe
 
-# Install to /usr/local/bin
 install: build
-	cp bwenv /usr/local/bin/
+	install -d "$(DESTDIR)$(PREFIX)/bin"
+	install -m 0755 bwenv "$(DESTDIR)$(PREFIX)/bin/bwenv"
 
-# Run tests
 test:
 	go test ./...
 
-# Run with args (example: make run ARGS="list myapp")
+test-race:
+	go test -race ./...
+
+fmt:
+	gofmt -w .
+
+fmt-check:
+	test -z "$$(gofmt -l .)"
+
+vet:
+	go vet ./...
+
+lint:
+	golangci-lint run
+
+verify: fmt-check vet test
+	bash -n install.sh scripts/check-doc-links.sh scripts/test-installer.sh
+	./scripts/check-doc-links.sh
+	./scripts/test-installer.sh
+
 run: build
 	./bwenv $(ARGS)

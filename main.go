@@ -1,7 +1,12 @@
+// Command bwenv provides app-scoped environments backed by Bitwarden Secrets Manager.
 package main
 
-import "bwenv/cmd"
+import (
+	"os"
+
+	"bwenv/cmd"
+)
 
 func main() {
-	cmd.Execute()
+	os.Exit(cmd.Execute())
 }

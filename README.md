@@ -1,88 +1,112 @@
-# bwenv
+<div align="center">
+  <img src="docs/assets/logo.svg" width="104" alt="bwenv logo">
+  <h1>bwenv</h1>
+  <p><strong>One Bitwarden project. Many clean, app-scoped environments.</strong></p>
+  <p>
+    <a href="https://github.com/saiteja-madha/bwenv/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/saiteja-madha/bwenv/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://github.com/saiteja-madha/bwenv/releases"><img alt="Release" src="https://img.shields.io/github/v/release/saiteja-madha/bwenv?display_name=tag"></a>
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-22c55e"></a>
+  </p>
+</div>
 
-A tiny helper for **Bitwarden Secrets Manager** (`bws`) to manage app-specific env vars using a prefix convention.
+![A homelab server routing app environments into a secure vault](docs/assets/bwenv-hero.png)
 
-- Store secrets in a single project (e.g. `dev-sandbox`) as `<app>__KEY`.
-- Push (`add`/`load`) and pull (`pull`/`run`) without writing a `.env` file.
+`bwenv` is a small wrapper around the official [Bitwarden Secrets Manager CLI](https://bitwarden.com/help/secrets-manager-cli/). It lets homelabbers and self-hosters keep many application environments inside one Bitwarden project without scattering `.env` files across servers.
+
+```text
+immich__DB_PASSWORD       → only Immich
+paperless__DB_PASSWORD    → only Paperless-ngx
+shared__TZ                → both, with --include-shared
+```
+
+## Why bwenv?
+
+- Keep app secrets separated by a simple `<app>__KEY` convention.
+- Import and export familiar dotenv data.
+- Run Docker Compose, systemd helpers, scripts, and CLIs with secrets in memory.
+- Share common values while allowing app-specific overrides.
+- Retain official `bws` authentication, profiles, server routing, and output formats.
+
+## Quick start
+
+Install the official `bws` CLI, create a machine-account access token, and choose one project for your environment.
+
+```bash
+export BWS_ACCESS_TOKEN="your-machine-account-token"
+export BWS_PROJECT_ID="your-project-uuid"
+
+bwenv create immich DB_PASSWORD 'correct-horse-battery-staple'
+bwenv create shared TZ 'America/Los_Angeles'
+
+bwenv list immich --include-shared
+bwenv run immich --include-shared -- docker compose up -d
+```
+
+App values override shared values with the same key. `bwenv run` removes `BWS_ACCESS_TOKEN` before starting the child process.
 
 ## Install
 
-### Pre-built Binary (Recommended)
+### Installer (macOS and Linux)
 
-**One-liner install (macOS/Linux):**
+The installer downloads the matching release and requires a valid SHA-256 checksum.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saiteja-madha/bwenv/main/install.sh | bash
 ```
 
-**Manual Download:**
-1. Go to [Releases](https://github.com/saiteja-madha/bwenv/releases)
-2. Download the binary for your platform
-3. Make it executable and add to your PATH
+Set `INSTALL_DIR` to choose another destination or `BWENV_VERSION` to pin a release:
 
-### Build from Source
+```bash
+curl -fsSL https://raw.githubusercontent.com/saiteja-madha/bwenv/main/install.sh |
+  INSTALL_DIR="$HOME/bin" BWENV_VERSION=v1.0.0 bash
+```
+
+### Homebrew HEAD
+
+Until the first stable formula is published, build the current main branch through the included formula:
+
+```bash
+brew tap saiteja-madha/bwenv https://github.com/saiteja-madha/bwenv
+brew install --HEAD bwenv
+```
+
+### Build from source
+
 ```bash
 git clone https://github.com/saiteja-madha/bwenv.git
 cd bwenv
 make build
-make install  # or copy ./bwenv to your PATH
+sudo make install
 ```
 
-## Requirements
+## Commands
 
-- A Bitwarden account with [Secrets Manager](https://bitwarden.com/help/article/secrets-manager/) enabled
-- A Bitwarden organization with a project to store your secrets
-- The [Secrets Manager CLI](https://bitwarden.com/help/article/secrets-manager-cli/) (`bws`) installed and configured
-- Set your env vars (e.g. in ~/.zshrc):
+| Command | Purpose |
+|---|---|
+| `create <app> <key> <value>` | Create one variable; refuses to overwrite |
+| `import <app> <file\|->` | Upsert variables from dotenv or stdin |
+| `list <app>` | List normalized app secrets |
+| `get <app> <key>` | Get one app key, optionally falling back to shared |
+| `edit <app> <key>` | Change a key, value, or note |
+| `delete <app> <key>...` | Delete one or more resolved keys |
+| `export <app>` | Print the effective environment; dotenv by default |
+| `run <app> -- <command>` | Run through a shell with the effective environment |
+| `completion <shell>` | Generate shell completions with Cobra |
+| `version` | Print build metadata |
 
-```bash
-export BWS_ACCESS_TOKEN="your_machine_access_token"
-export BWS_PROJECT_ID="your_dev_project_uuid"
-```
+Read the [complete CLI reference](docs/reference/cli.md) for flags, output formats, exit behavior, shared precedence, and examples.
 
-## Usage
+## Security model
 
-```bash
-bwenv add  <app> KEY VALUE
-bwenv add  <app> KEY=VALUE
-bwenv load <app> path/to/.env [--dry-run]
-bwenv list <app>
-bwenv pull <app> [--include-shared]
-bwenv run  <app> [--include-shared] <command> [args...]
-```
+`bwenv` never stores your access token or fetched secret values. It invokes the official `bws` binary and keeps transformed environments in process memory. Every create or edit—including operations initiated by `import`—must ultimately pass the value to `bws` as a process argument, which can be visible to local process inspection tools. Restrict local host access and remove temporary source files promptly.
 
-## Examples
+Only run trusted commands with `bwenv run`: the child receives the selected secrets and has your normal operating-system permissions.
 
-Seed from an existing .env:
+## Project docs
 
-```bash
-bwenv load notes-api .env
-```
+- [Documentation index](docs/README.md)
+- [Architecture and security boundaries](docs/architecture.md)
+- [Contributing](CONTRIBUTING.md)
+- [License](LICENSE)
 
-Run Flask without creating a .env:
-
-```bash
-bwenv run notes-api flask run
-```
-
-Include shared variables (from shared\_\_KEY secrets):
-
-```bash
-bwenv run notes-api --include-shared flask run
-```
-
-List keys for one app:
-
-```bash
-bwenv list notes-api
-```
-
-Print env lines that would be injected:
-
-```bash
-bwenv pull notes-api
-```
-
-## Why not just bws run?
-
-- bws run injects all secrets in a project.
-- bwenv lets you filter by app using a simple prefix, so you can keep everything in one project on the Free plan and still get per-app envs.
+The hero artwork is original to this project and generated for bwenv.

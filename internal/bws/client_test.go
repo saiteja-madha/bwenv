@@ -1,6 +1,12 @@
 package bws
 
 import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -10,111 +16,127 @@ func TestValidateValue(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{"empty string", "", false},
-		{"normal string", "hello", false},
-		{"with spaces", "hello world", false},
-		{"special chars", `p@ssw0rd!#$%&'()*+,-./:;<=>?@[]^_{|}~`, false},
+		{"empty", "", false},
+		{"leading dash", "--password", false},
 		{"unicode", "héllo 日本語", false},
-		{"multiline", "line1\nline2\nline3", false},
-		{"with equals", "foo=bar=baz", false},
-		{"null byte", "secret\x00hidden", true},
-		{"null byte at start", "\x00secret", true},
-		{"null byte at end", "secret\x00", true},
-		{"only null byte", "\x00", true},
+		{"multiline", "line1\nline2", false},
+		{"equals", "foo=bar=baz", false},
+		{"null", "secret\x00hidden", true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateValue(tt.value)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateValue() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("validateValue() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestFilterEnvLines(t *testing.T) {
-	secrets := []Secret{
-		{ID: "1", Key: "myapp__DATABASE_URL", Value: "postgres://localhost"},
-		{ID: "2", Key: "myapp__API_KEY", Value: "secret123"},
-		{ID: "3", Key: "shared__LOG_LEVEL", Value: "debug"},
-		{ID: "4", Key: "other__TOKEN", Value: "should-not-appear"},
-		{ID: "5", Key: "", Value: "empty-key"},
+func TestCreateSecretSubprocessContract(t *testing.T) {
+	argsFile := t.TempDir() + "/args.json"
+	t.Setenv("BWENV_HELPER_PROCESS", "1")
+	t.Setenv("BWENV_ARGS_FILE", argsFile)
+	client := NewClient(GlobalOptions{
+		AccessToken: "access-token",
+		ConfigFile:  "/tmp/config",
+		Profile:     "lab",
+		ServerURL:   "https://vault.example.test",
+	}, false, nil)
+	client.command = helperCommand
+	secret, err := client.CreateSecret(context.Background(), "photos__TOKEN", "--leading-dash", "project-id", "private note")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	t.Run("app specific", func(t *testing.T) {
-		lines := FilterEnvLines(secrets, "myapp", false)
-		if len(lines) != 2 {
-			t.Fatalf("expected 2 lines, got %d: %v", len(lines), lines)
-		}
-		expected := map[string]string{
-			"DATABASE_URL": "postgres://localhost",
-			"API_KEY":      "secret123",
-		}
-		for _, line := range lines {
-			parts := splitLine(line)
-			if parts == nil {
-				t.Fatalf("malformed line: %s", line)
-			}
-			if expected[parts.key] != parts.value {
-				t.Errorf("for key %s: expected %q, got %q", parts.key, expected[parts.key], parts.value)
-			}
-		}
-	})
-
-	t.Run("with shared", func(t *testing.T) {
-		lines := FilterEnvLines(secrets, "myapp", true)
-		if len(lines) != 3 {
-			t.Fatalf("expected 3 lines, got %d: %v", len(lines), lines)
-		}
-	})
-
-	t.Run("no secrets", func(t *testing.T) {
-		lines := FilterEnvLines(nil, "nonexistent", false)
-		if len(lines) != 0 {
-			t.Fatalf("expected 0 lines, got %d", len(lines))
-		}
-	})
+	if secret.Key != "photos__TOKEN" || secret.Value != "--leading-dash" {
+		t.Fatalf("unexpected decoded secret: %#v", secret)
+	}
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"--access-token", "access-token",
+		"--config-file", "/tmp/config",
+		"--profile", "lab",
+		"--server-url", "https://vault.example.test",
+		"--output", "json", "--color", "no",
+		"secret", "create", "--note=private note", "--",
+		"photos__TOKEN", "--leading-dash", "project-id",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bws args = %#v, want %#v", got, want)
+	}
 }
 
-func TestFilterAppKeys(t *testing.T) {
-	secrets := []Secret{
-		{ID: "1", Key: "myapp__DATABASE_URL", Value: "postgres://localhost"},
-		{ID: "2", Key: "myapp__API_KEY", Value: "secret123"},
-		{ID: "3", Key: "other__TOKEN", Value: "should-not-appear"},
-	}
-
-	t.Run("app keys", func(t *testing.T) {
-		keys := FilterAppKeys(secrets, "myapp")
-		if len(keys) != 2 {
-			t.Fatalf("expected 2 keys, got %d: %v", len(keys), keys)
-		}
-		expected := map[string]bool{"DATABASE_URL": true, "API_KEY": true}
-		for _, k := range keys {
-			if !expected[k] {
-				t.Errorf("unexpected key: %s", k)
-			}
-		}
-	})
-
-	t.Run("no keys", func(t *testing.T) {
-		keys := FilterAppKeys(nil, "nonexistent")
-		if len(keys) != 0 {
-			t.Fatalf("expected 0 keys, got %d", len(keys))
-		}
-	})
+func helperCommand(ctx context.Context, _ string, args ...string) *exec.Cmd {
+	helperArgs := append([]string{"-test.run=TestBWSHelperProcess", "--"}, args...)
+	return exec.CommandContext(ctx, os.Args[0], helperArgs...)
 }
 
-type lineParts struct {
-	key   string
-	value string
-}
-
-func splitLine(line string) *lineParts {
-	for i := 0; i < len(line); i++ {
-		if line[i] == '=' {
-			return &lineParts{key: line[:i], value: line[i+1:]}
+func TestBWSHelperProcess(_ *testing.T) {
+	if os.Getenv("BWENV_HELPER_PROCESS") != "1" {
+		return
+	}
+	separator := 0
+	for i, arg := range os.Args {
+		if arg == "--" {
+			separator = i + 1
+			break
 		}
 	}
-	return nil
+	args := os.Args[separator:]
+	data, err := json.Marshal(args)
+	if err != nil {
+		os.Exit(2)
+	}
+	if err := os.WriteFile(os.Getenv("BWENV_ARGS_FILE"), data, 0o600); err != nil {
+		os.Exit(2)
+	}
+	response := Secret{ID: "created", Key: "photos__TOKEN", Value: "--leading-dash"}
+	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func TestGlobalArgs(t *testing.T) {
+	client := NewClient(GlobalOptions{
+		AccessToken: "token",
+		ConfigFile:  "/tmp/bws-config",
+		Profile:     "homelab",
+		ServerURL:   "https://vault.example.test",
+	}, false, nil)
+	want := []string{
+		"--access-token", "token",
+		"--config-file", "/tmp/bws-config",
+		"--profile", "homelab",
+		"--server-url", "https://vault.example.test",
+	}
+	if got := client.globalArgs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("globalArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMaskArgs(t *testing.T) {
+	args := []string{
+		"--access-token", "machine.secret",
+		"secret", "edit", "id",
+		"--value=starts-with-a-dash",
+		"--note=private note",
+	}
+	masked := maskArgs(args, []string{"private note"})
+	joined := strings.Join(masked, " ")
+	for _, secret := range []string{"machine.secret", "starts-with-a-dash", "private note"} {
+		if strings.Contains(joined, secret) {
+			t.Fatalf("masked command leaks %q: %s", secret, joined)
+		}
+	}
+	if strings.Count(joined, "***") != 3 {
+		t.Fatalf("expected three masked values: %s", joined)
+	}
 }

@@ -1,33 +1,23 @@
 class Bwenv < Formula
-  desc "Bitwarden Secrets Manager helper for local dev"
+  desc "App-scoped environments backed by Bitwarden Secrets Manager"
   homepage "https://github.com/saiteja-madha/bwenv"
   license "MIT"
+  head "https://github.com/saiteja-madha/bwenv.git", branch: "main"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/saiteja-madha/bwenv/releases/download/vVERSION/bwenv-darwin-arm64"
-      sha256 "PLACEHOLDER_ARM64"
-    else
-      url "https://github.com/saiteja-madha/bwenv/releases/download/vVERSION/bwenv-darwin-amd64"
-      sha256 "PLACEHOLDER_AMD64"
-    end
-  end
-
-  on_linux do
-    if Hardware::CPU.arm?
-      url "https://github.com/saiteja-madha/bwenv/releases/download/vVERSION/bwenv-linux-arm64"
-      sha256 "PLACEHOLDER_LINUX_ARM64"
-    else
-      url "https://github.com/saiteja-madha/bwenv/releases/download/vVERSION/bwenv-linux-amd64"
-      sha256 "PLACEHOLDER_LINUX_AMD64"
-    end
-  end
+  depends_on "go" => :build
 
   def install
-    bin.install Dir["*"].first => "bwenv"
+    ldflags = %W[
+      -s -w
+      -X bwenv/cmd.Version=#{version}
+      -X bwenv/cmd.Commit=#{version}
+      -X bwenv/cmd.Date=homebrew
+    ]
+    system "go", "build", *std_go_args(ldflags: ldflags), "."
   end
 
   test do
-    assert_match "bwenv", shell_output("#{bin}/bwenv --help")
+    assert_match "bwenv #{version}", shell_output("#{bin}/bwenv version")
+    assert_match "create", shell_output("#{bin}/bwenv --help")
   end
 end

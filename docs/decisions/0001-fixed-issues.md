@@ -1,5 +1,7 @@
 # Fixed Issues and Design Decisions
 
+> Historical record. The command and client architecture described here was superseded by [ADR 0002](0002-bws-aligned-cli.md). Consult the current [CLI reference](../reference/cli.md) and [architecture](../architecture.md) for authoritative behavior.
+
 Summary of fixes applied during the initial codebase audit (July 2026).
 
 ## Issue \#2 — Special characters, null bytes, and empty values

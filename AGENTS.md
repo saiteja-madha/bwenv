@@ -1,89 +1,76 @@
-# bwenv — AGENTS.md
+# bwenv — agent guide
 
-## Project
+## Product
 
-Go CLI wrapper around Bitwarden Secrets Manager CLI (`bws`). Stores secrets as `<app>__KEY` in a single Bitwarden project, lets you pull/run per-app env vars without `.env` files.
+`bwenv` is a Go CLI wrapper around the official Bitwarden Secrets Manager CLI (`bws`). It lets one Bitwarden project represent an environment containing many application namespaces.
 
-- **Module:** `bwenv`, Go 1.24.3, dep: `github.com/spf13/cobra`
-- **Entry:** `main.go` → `cmd.Execute()` → cobra commands in `cmd/`
-- **Bitwarden layer:** `internal/bws/client.go` — shells out to `bws` binary via `exec.Command`
-- **Runtime deps (host):** `bws` CLI, `jq`, `BWS_ACCESS_TOKEN` env var
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `add <app> KEY VALUE` or `KEY=VALUE` | Upsert secret |
-| `load <app> <file>` | Bulk upsert from .env file |
-| `list <app>` | List key names (prefix stripped) |
-| `pull <app>` | Print `KEY=VALUE` lines |
-| `run <app> <cmd> [args...]` | Exec command with secrets as env vars |
-| `completion bash\|zsh\|fish` | Generate shell completions |
-
-Global flags: `--project-id`, `--dry-run`, `--include-shared`, `--verbose`/`-v`
-
-## Architecture notes
-
-- All Bitwarden I/O goes through `internal/bws/client.go` which calls `bws` CLI subprocesses.
-- `ListSecrets()` fetches all project secrets; filtering by app prefix happens in-memory via `FilterEnvLines`/`FilterAppKeys`.
-- `UpdateSecret` uses `--value=<val>` syntax (`--value=%s`) — not `--value <val>` — to prevent clap flag misinterpretation when values start with `-`.
-- `validateValue()` rejects null bytes (`\x00`) which would truncate C strings in `execve`.
-- Empty secret values are valid (fixed in `cmd/add.go`).
-- Values are always passed as `bws` CLI args — visible in process lists (`ps`). This is an inherent bws limitation (no stdin support for values).
-
-## Testing
-
-```sh
-go test ./...           # all tests
-go test -v ./internal/...  # bws client tests only
+```text
+<app>__KEY   → immich__DATABASE_URL
+shared__KEY  → shared__TZ
 ```
 
-Tests exist only in `internal/bws/client_test.go` (unit tests for `validateValue`, `FilterEnvLines`, `FilterAppKeys`). `cmd/` package has no tests — cobra commands depend on the global `bwsClient` and require integration-style mocking.
+The CLI strips prefixes for output and process environments. With `--include-shared`, shared values load first and app values override them.
 
-## Build & CI
+## Command surface
 
-```sh
-make build        # go build -o bwenv
-make build-all    # cross-compile all platforms to dist/
-make test         # go test ./...
-make clean        # rm dist/ bwenv
+```text
+bwenv create <app> <key> <value>
+bwenv import <app> <file|->
+bwenv list <app>
+bwenv get <app> <key>
+bwenv edit <app> <key>
+bwenv delete <app> <key>...
+bwenv export <app>
+bwenv run <app> -- <command>
+bwenv completion <shell>
+bwenv version
 ```
 
-CI (`.github/workflows/ci.yml`): build + test on ubuntu/macos/windows for push/PR to `main`.
-Release (`.github/workflows/release.yml`): tag `v*` triggers multi-arch build + GitHub release.
-Lint (`.golangci.yml`): gofmt, govet, errcheck, staticcheck, gosimple, ineffassign, unused, revive.
+Do not add an `env` command group: the product name already supplies that context. Do not wrap `bws project` or `bws config`.
 
-## Secret naming convention
+Official global options are `--output`, `--color`, `--access-token`, `--config-file`, `--profile`, and `--server-url`. `--project-id` and `--verbose` are bwenv options. `--include-shared` appears only on read/export/run commands; `--dry-run` appears only on mutations.
 
+## Architecture
+
+- `main.go` translates `cmd.Execute()` into a process exit code.
+- `cmd/` keeps each flat command in its own `<command>.go` file and uses Cobra's built-in completion command. Shared construction helpers live in `environment.go`; avoid package-global command state.
+- `internal/bws/` is the sole Bitwarden I/O boundary and shells out to `bws` with `exec.CommandContext`.
+- `internal/environment/` owns validation, prefix mapping, resolution, duplicates, sorting, and shared precedence.
+- `internal/output/` renders normalized records after filtering; it does not contact Bitwarden.
+
+Internal Bitwarden calls force JSON and disable color, then bwenv applies its environment transformation. Do not reimplement authentication or call Secrets Manager HTTP APIs directly.
+
+## Security invariants
+
+- Never log or return secret values, notes, or access tokens in bwenv-generated errors.
+- Mask access tokens, values, and notes in `--verbose` subprocess logs.
+- Remove `BWS_ACCESS_TOKEN` from `run` children.
+- Reject null bytes and ambiguous duplicate full keys.
+- Preserve empty values and values beginning with `-`.
+- Resolve every requested delete before mutation.
+- Values passed to official create/edit commands are visible in local process lists; document rather than conceal this limitation.
+
+## Development
+
+Go version and dependencies are declared in `go.mod`.
+
+```bash
+make verify       # formatting, vet, unit tests, shell syntax, doc links
+make test-race    # race detector
+make build        # current platform with version metadata
+make build-all    # supported release targets
+make lint         # golangci-lint when installed
 ```
-<app>__KEY           → myapp__DATABASE_URL
-shared__KEY          → shared__LOG_LEVEL
-```
 
-`--include-shared` injects both `<app>__*` and `shared__*` secrets.
+Tests must not require a real `bws` binary, token, or network. Command tests inject a fake client. Add cases for success, validation, remote failure, redaction, and exit status. Run Windows cross-compilation for process changes.
 
-## Dev commands
+## Delivery
 
-```sh
-make run ARGS="list myapp"   # build + run with args
-go build -o bwenv && ./bwenv --help
-```
+- `install.sh` downloads raw release binaries and requires SHA-256 verification.
+- `Formula/bwenv.rb` is a valid HEAD formula until stable formula publishing is automated.
+- CI tests Linux, macOS, and Windows. Release tags `v*` build five targets, embed metadata, smoke-test, checksum, and publish.
+- Never commit generated binaries, `dist/`, access tokens, or exported dotenv files.
 
 ## Documentation
 
-Keep docs in `docs/`. Structure:
-
-```
-docs/
-├── README.md          # index, points to entry docs
-├── decisions/         # ADR-style design records
-└── guides/            # step-by-step how-tos (when needed)
-```
-
-Rules:
-- Prefer small modular files over one large document
-- Update existing docs before creating new ones
-- Remove stale or redundant documentation
-- Keep docs close to the code they describe when practical
-- Verify internal links are valid after changes
-- docs/README.md is the index — explain what exists, where, and who it is for
+`docs/` is authoritative for humans and coding agents. `docs/README.md` indexes every current document. Update the CLI reference and architecture with behavior changes, add ADRs for durable product decisions, remove stale audits, and run the link checker. Keep the root README concise and user-focused.
