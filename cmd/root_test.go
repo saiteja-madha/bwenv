@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -191,7 +192,12 @@ func TestRunStripsTokenAndAppliesSharedPrecedence(t *testing.T) {
 		{ID: "1", Key: "shared__TOKEN", Value: "shared"},
 		{ID: "2", Key: "photos__TOKEN", Value: "app"},
 	}}
-	command := `test -z "$BWS_ACCESS_TOKEN" && printf '%s' "$TOKEN"`
+	var command string
+	if runtime.GOOS == "windows" {
+		command = `if (-not $env:BWS_ACCESS_TOKEN) { Write-Output $env:TOKEN }`
+	} else {
+		command = `test -z "$BWS_ACCESS_TOKEN" && printf '%s' "$TOKEN"`
+	}
 	stdout, _, err := executeForTest(t, client, "", "run", "photos", "--include-shared", "--", command)
 	if err != nil {
 		t.Fatal(err)
