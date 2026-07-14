@@ -54,6 +54,15 @@ Internal Bitwarden calls force JSON and disable color, then bwenv applies its en
 
 Go version and dependencies are declared in `go.mod`.
 
+Use feature branches off `main` and open pull requests. Never push directly to `main`.
+
+```bash
+git checkout -b fix/my-change
+# make changes, commit
+git push origin fix/my-change
+# open PR at the URL shown
+```
+
 ```bash
 make verify       # formatting, vet, unit tests, shell syntax, doc links
 make test-race    # race detector
