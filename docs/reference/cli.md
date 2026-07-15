@@ -81,14 +81,6 @@ bwenv delete <app> <key>... [--dry-run]
 
 Resolves every key before deleting anything, then uses official `bws` multi-delete. Shared fallback is intentionally not used for mutations.
 
-### export
-
-```text
-bwenv export <app> [--include-shared]
-```
-
-Writes the effective environment to stdout. Its default format is dotenv-style `KEY="VALUE"`; an explicit global `--output` selects another supported representation.
-
 ### run
 
 ```text

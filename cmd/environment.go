@@ -20,7 +20,6 @@ func newEnvironmentCommands(cfg *config, deps *runtimeDeps) []*cobra.Command {
 		newGetCommand(cfg, deps),
 		newEditCommand(cfg, deps),
 		newDeleteCommand(cfg, deps),
-		newExportCommand(cfg, deps),
 	}
 }
 

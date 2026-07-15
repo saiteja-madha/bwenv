@@ -83,7 +83,7 @@ func TestRootUsesFlatCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"create", "import", "list", "get", "edit", "delete", "export", "run", "completion", "version"} {
+	for _, command := range []string{"create", "import", "list", "get", "edit", "delete", "run", "completion", "version"} {
 		if !strings.Contains(stdout, command) {
 			t.Errorf("root help missing %q:\n%s", command, stdout)
 		}
@@ -146,21 +146,6 @@ func TestImportDuplicateUsesFinalDefinition(t *testing.T) {
 	}
 	if len(client.created) != 1 || client.created[0].Value != "last" {
 		t.Fatalf("duplicate dotenv handling = %#v", client.created)
-	}
-}
-
-func TestExportMergesSharedWithAppPrecedence(t *testing.T) {
-	client := &fakeClient{secrets: []bws.Secret{
-		{ID: "1", Key: "shared__TOKEN", Value: "shared"},
-		{ID: "2", Key: "shared__LOG", Value: "info"},
-		{ID: "3", Key: "photos__TOKEN", Value: "app"},
-	}}
-	stdout, _, err := executeForTest(t, client, "", "export", "photos", "--include-shared")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stdout != "LOG=\"info\"\nTOKEN=\"app\"\n" {
-		t.Fatalf("unexpected export: %q", stdout)
 	}
 }
 

@@ -89,7 +89,6 @@ sudo make install
 | `get <app> <key>` | Get one app key, optionally falling back to shared |
 | `edit <app> <key>` | Change a key, value, or note |
 | `delete <app> <key>...` | Delete one or more resolved keys |
-| `export <app>` | Print the effective environment; dotenv by default |
 | `run <app> -- <command>` | Run through a shell with the effective environment |
 | `completion <shell>` | Generate shell completions with Cobra |
 | `version` | Print build metadata |

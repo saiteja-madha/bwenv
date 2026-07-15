@@ -11,7 +11,7 @@ An intermediate design proposed `bwenv env create`, but `env` repeats the produc
 
 ## Decision
 
-Use flat commands: `create`, `import`, `list`, `get`, `edit`, `delete`, `export`, and `run`. Their naming follows official `bws secret` operations where the semantics match. `import` and `export` are bwenv-specific dotenv workflows.
+Use flat commands: `create`, `import`, `list`, `get`, `edit`, `delete`, and `run`. Their naming follows official `bws secret` operations where the semantics match. `import` is a bwenv-specific dotenv workflow.
 
 Do not wrap `bws project` or `bws config`. Users manage those directly with official `bws`; bwenv accepts and forwards the official global authentication and routing options.
 

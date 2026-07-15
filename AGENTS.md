@@ -20,7 +20,6 @@ bwenv list <app>
 bwenv get <app> <key>
 bwenv edit <app> <key>
 bwenv delete <app> <key>...
-bwenv export <app>
 bwenv run <app> -- <command>
 bwenv completion <shell>
 bwenv version
@@ -28,7 +27,7 @@ bwenv version
 
 Do not add an `env` command group: the product name already supplies that context. Do not wrap `bws project` or `bws config`.
 
-Official global options are `--output`, `--color`, `--access-token`, `--config-file`, `--profile`, and `--server-url`. `--project-id` and `--verbose` are bwenv options. `--include-shared` appears only on read/export/run commands; `--dry-run` appears only on mutations.
+Official global options are `--output`, `--color`, `--access-token`, `--config-file`, `--profile`, and `--server-url`. `--project-id` and `--verbose` are bwenv options. `--include-shared` appears only on read/run commands; `--dry-run` appears only on mutations.
 
 ## Architecture
 
