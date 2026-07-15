@@ -44,7 +44,7 @@ lint:
 	golangci-lint run
 
 verify: fmt-check vet test
-	bash -n install.sh scripts/check-doc-links.sh scripts/test-installer.sh
+	bash -n install.sh scripts/check-doc-links.sh scripts/e2e.sh scripts/test-installer.sh
 	./scripts/check-doc-links.sh
 	./scripts/test-installer.sh
 
