@@ -2,11 +2,14 @@ package output
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
 	"bwenv/internal/bws"
 	"bwenv/internal/environment"
+
+	"github.com/joho/godotenv"
 )
 
 func outputFixture() []environment.Entry {
@@ -38,6 +41,34 @@ func TestEnvOutputQuotesLosslessly(t *testing.T) {
 	want := "EMPTY=\"\"\nTOKEN=\"a=b\\nline\"\n"
 	if buffer.String() != want {
 		t.Fatalf("env output = %q, want %q", buffer.String(), want)
+	}
+}
+
+func TestEnvOutputRoundTripsSpecialValues(t *testing.T) {
+	want := map[string]string{
+		"DOLLAR":    "$HOME ${TOKEN}",
+		"EMPTY":     "",
+		"MULTILINE": "first\r\nsecond",
+		"PUNCT":     "quote=\" slash=\\ bang=! tick=`",
+		"UNICODE":   "héllo 日本語",
+	}
+	entries := make([]environment.Entry, 0, len(want))
+	for key, value := range want {
+		entries = append(entries, environment.Entry{
+			Secret: bws.Secret{Key: key, Value: value},
+			Source: "app",
+		})
+	}
+	var buffer bytes.Buffer
+	if err := RenderEntries(&buffer, entries, "env", false, "no"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := godotenv.Unmarshal(buffer.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dotenv round trip = %#v, want %#v; output: %q", got, want, buffer.String())
 	}
 }
 
