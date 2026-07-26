@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+  pull-requests: write
 
 jobs:
   release:
@@ -34,9 +37,43 @@ jobs:
         working-directory: dist
         run: sha256sum bwenv-* > checksums.txt
 
+      - name: Attest release binaries
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/bwenv-*
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: dist/*
+
+      - name: Check out main for formula update
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          clean: false
+
+      - name: Update stable Homebrew formula
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./scripts/render-homebrew-formula.sh "$VERSION" dist/checksums.txt Formula/bwenv.rb
+
+      - name: Open Homebrew formula pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.BWENV_RELEASE_PAT || github.token }}
+          add-paths: Formula/bwenv.rb
+          base: main
+          branch: chore/homebrew-${{ github.ref_name }}
+          delete-branch: true
+          sign-commits: true
+          commit-message: |
+            chore: update Homebrew formula for ${{ github.ref_name }}
+
+            Co-authored-by: Codex <codex@openai.com>
+          title: "chore: update Homebrew formula for ${{ github.ref_name }}"
+          body: |
+            Automated stable-formula update using the checksums from the
+            `${{ github.ref_name }}` release.

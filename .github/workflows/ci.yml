@@ -21,6 +21,10 @@ jobs:
           cache-dependency-path: go.sum
       - name: Verify
         run: make verify
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+      - name: ShellCheck
+        run: make shellcheck
       - name: Race tests
         run: make test-race
 
@@ -44,3 +48,15 @@ jobs:
       - name: Smoke test
         shell: bash
         run: ./bwenv${{ runner.os == 'Windows' && '.exe' || '' }} version
+      - name: Test installer
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/test-installer.sh
+      - name: Test stable Homebrew formula
+        if: runner.os == 'macOS'
+        run: |
+          brew style Formula/bwenv.rb
+          brew tap-new --no-git test/bwenv
+          cp Formula/bwenv.rb "$(brew --repository test/bwenv)/Formula/bwenv.rb"
+          brew install test/bwenv/bwenv
+          brew test test/bwenv/bwenv
