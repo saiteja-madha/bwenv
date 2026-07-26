@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"bwenv/internal/environment"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
@@ -46,12 +46,19 @@ func renderPlain(w io.Writer, entries []environment.Entry, format string, single
 		_, err = w.Write(data)
 		return err
 	case "env":
+		values := make(map[string]string, len(entries))
 		for _, entry := range entries {
-			if _, err := fmt.Fprintf(w, "%s=%s\n", entry.Key, strconv.Quote(entry.Value)); err != nil {
-				return err
-			}
+			values[entry.Key] = entry.Value
 		}
-		return nil
+		data, err := godotenv.Marshal(values)
+		if err != nil {
+			return fmt.Errorf("encode dotenv output: %w", err)
+		}
+		if data == "" {
+			return nil
+		}
+		_, err = fmt.Fprintln(w, data)
+		return err
 	case "table":
 		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 		if _, err := fmt.Fprintln(tw, "ID\tKEY\tVALUE\tSOURCE\tCREATION DATE"); err != nil {

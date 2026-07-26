@@ -23,7 +23,7 @@ App names use letters, numbers, `.`, `_`, or `-`, must start with a letter or nu
 | `-h, --help` | — | Help |
 | `-V, --version` | — | bwenv version |
 
-Authentication and routing options are forwarded to official `bws`. Internally, bwenv requests JSON without color so it can safely filter and merge records, then renders the normalized result.
+Authentication and routing options are forwarded to official `bws`. An explicitly supplied access token is placed in the subprocess environment instead of duplicated in the `bws` argument list. Internally, bwenv requests JSON without color so it can safely filter and merge records, then renders the normalized result.
 
 `run --uuids-as-keynames` also honors the official `BWS_UUIDS_AS_KEYNAMES` environment variable.
 
@@ -43,11 +43,11 @@ Creates `<app>__<key>`. It refuses to overwrite or create a second secret with t
 bwenv import <app> <file|-> [--dry-run]
 ```
 
-Parses dotenv syntax and upserts every key. `-` reads stdin. The entire input and all key names are validated before writes begin. Operations are sorted by key and use one initial project listing. Remote writes are not transactional: on failure, the error reports how many prior operations completed.
+Parses dotenv syntax and upserts every key. `-` reads stdin. The entire input, all key names, and every value are validated before the project is listed or writes begin. Operations are sorted by key and use one initial project listing. Existing secrets whose values are already equal are reported as unchanged without issuing an edit. Remote writes are not transactional: on failure, the error reports how many prior operations completed.
 
 If a dotenv file defines the same key more than once, the final definition wins.
 
-Import summaries support all global output formats. Table and TSV report one create/update action per key; env output reports `APP`, `CREATED`, `UPDATED`, and `DRY_RUN`.
+Import summaries support all global output formats. Table and TSV report one create, update, or unchanged action per key; env output reports `APP`, `CREATED`, `UPDATED`, `UNCHANGED`, and `DRY_RUN`.
 
 ### list
 
@@ -87,7 +87,7 @@ Resolves every key before deleting anything, then uses official `bws` multi-dele
 bwenv export <app> [--include-shared]
 ```
 
-Writes the effective environment to stdout. Its default format is dotenv-style `KEY="VALUE"`; an explicit global `--output` selects another supported representation.
+Writes the effective environment to stdout. Its default format is lossless dotenv syntax suitable for a later `bwenv import`; an explicit global `--output` selects another supported representation.
 
 ### run
 
@@ -96,7 +96,14 @@ bwenv run <app> [--include-shared] [--shell SHELL] [--no-inherit-env]
                 [--uuids-as-keynames] -- <command>
 ```
 
-Uses `sh` on macOS/Linux and PowerShell on Windows unless `--shell` is supplied. With no command arguments, it reads a command from stdin. The child inherits the current environment by default, except `BWS_ACCESS_TOKEN` is always removed. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
+Uses `sh` on macOS/Linux and PowerShell on Windows unless `--shell` is supplied. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
+
+Separately supplied command arguments are quoted for the selected shell so spaces and quotes retain their argument boundaries. A single command string is passed to the shell verbatim; use that form for pipelines, redirections, variable expansion, and compound commands:
+
+```bash
+bwenv run immich -- printf '<%s>\n' 'value with spaces'
+bwenv run immich -- 'docker compose up -d && docker compose logs -f'
+```
 
 The child’s exit code becomes bwenv’s exit code. Only run trusted commands.
 
@@ -115,8 +122,9 @@ JSON and YAML retain official secret fields such as `id`, `projectId`, `value`, 
 
 ## Failure and security behavior
 
-- Official `bws` stderr and nonzero exit codes are preserved.
+- Official `bws` stderr is preserved on successful and failed calls, and nonzero exit codes are preserved.
 - Access tokens, values, and notes are masked in verbose subprocess logs.
-- Null bytes are rejected because operating-system process arguments and environments cannot carry them.
+- `--access-token` remains visible in the original bwenv process arguments when used; prefer `BWS_ACCESS_TOKEN`. bwenv does not copy that token into the child `bws` argument list.
+- Null bytes are rejected before remote work begins because operating-system process arguments and environments cannot carry them.
 - Values passed to `create` and `edit` remain visible in local process listings while the official `bws` subprocess runs.
 - Duplicate stored full keys are errors; bwenv never selects one arbitrarily.

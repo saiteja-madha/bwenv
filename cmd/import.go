@@ -19,10 +19,11 @@ import (
 )
 
 type importSummary struct {
-	App     string   `json:"app" yaml:"app"`
-	Created []string `json:"created" yaml:"created"`
-	Updated []string `json:"updated" yaml:"updated"`
-	DryRun  bool     `json:"dryRun" yaml:"dryRun"`
+	App       string   `json:"app" yaml:"app"`
+	Created   []string `json:"created" yaml:"created"`
+	Updated   []string `json:"updated" yaml:"updated"`
+	Unchanged []string `json:"unchanged" yaml:"unchanged"`
+	DryRun    bool     `json:"dryRun" yaml:"dryRun"`
 }
 
 func newImportCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
@@ -45,9 +46,12 @@ func newImportCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				return fmt.Errorf("parse dotenv input: %w", err)
 			}
 			keys := make([]string, 0, len(values))
-			for key := range values {
+			for key, value := range values {
 				if err := environment.ValidateKey(key); err != nil {
 					return err
+				}
+				if err := bws.ValidateValue(value); err != nil {
+					return fmt.Errorf("invalid value for environment key %s: %w", key, err)
 				}
 				keys = append(keys, key)
 			}
@@ -60,11 +64,21 @@ func newImportCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			summary := importSummary{App: app, Created: []string{}, Updated: []string{}, DryRun: dryRun}
+			summary := importSummary{
+				App:       app,
+				Created:   []string{},
+				Updated:   []string{},
+				Unchanged: []string{},
+				DryRun:    dryRun,
+			}
 			for _, key := range keys {
 				fullKey, _ := environment.FullKey(app, key)
 				value := values[key]
 				if existing, ok := index[fullKey]; ok {
+					if existing.Value == value {
+						summary.Unchanged = append(summary.Unchanged, key)
+						continue
+					}
 					summary.Updated = append(summary.Updated, key)
 					if !dryRun {
 						request := bws.EditRequest{Value: &value}
@@ -107,10 +121,11 @@ func renderImportSummary(w io.Writer, summary importSummary, format, color strin
 		data, err = yaml.Marshal(summary)
 	case "env":
 		data = []byte(fmt.Sprintf(
-			"APP=%s\nCREATED=%s\nUPDATED=%s\nDRY_RUN=%s\n",
+			"APP=%s\nCREATED=%s\nUPDATED=%s\nUNCHANGED=%s\nDRY_RUN=%s\n",
 			strconv.Quote(summary.App),
 			strconv.Quote(strings.Join(summary.Created, ",")),
 			strconv.Quote(strings.Join(summary.Updated, ",")),
+			strconv.Quote(strings.Join(summary.Unchanged, ",")),
 			strconv.Quote(strconv.FormatBool(summary.DryRun)),
 		))
 	case "table", "tsv":
@@ -138,6 +153,11 @@ func renderImportRows(summary importSummary, table bool) ([]byte, error) {
 			buffer.WriteString(key)
 			buffer.WriteString("\n")
 		}
+		for _, key := range summary.Unchanged {
+			buffer.WriteString("unchanged\t")
+			buffer.WriteString(key)
+			buffer.WriteString("\n")
+		}
 		return []byte(buffer.String()), nil
 	}
 	tw := tabwriter.NewWriter(&buffer, 0, 4, 2, ' ', 0)
@@ -151,6 +171,11 @@ func renderImportRows(summary importSummary, table bool) ([]byte, error) {
 	}
 	for _, key := range summary.Updated {
 		if _, err := fmt.Fprintf(tw, "updated\t%s\n", key); err != nil {
+			return nil, err
+		}
+	}
+	for _, key := range summary.Unchanged {
+		if _, err := fmt.Fprintf(tw, "unchanged\t%s\n", key); err != nil {
 			return nil, err
 		}
 	}

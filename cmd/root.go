@@ -41,15 +41,25 @@ type config struct {
 }
 
 type runtimeDeps struct {
-	client bwsClient
-	stdin  io.Reader
-	stdout io.Writer
-	stderr io.Writer
-	getenv func(string) string
+	client          bwsClient
+	stdin           io.Reader
+	stdout          io.Writer
+	stderr          io.Writer
+	getenv          func(string) string
+	stdinIsTerminal func() bool
 }
 
 func defaultDeps() *runtimeDeps {
-	return &runtimeDeps{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr, getenv: os.Getenv}
+	return &runtimeDeps{
+		stdin:  os.Stdin,
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+		getenv: os.Getenv,
+		stdinIsTerminal: func() bool {
+			info, err := os.Stdin.Stat()
+			return err == nil && info.Mode()&os.ModeCharDevice != 0
+		},
+	}
 }
 
 func newRootCommand(deps *runtimeDeps) *cobra.Command {

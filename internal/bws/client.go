@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -41,7 +42,6 @@ type EditRequest struct {
 
 // CommandError preserves bws stderr and its process exit code.
 type CommandError struct {
-	Args   []string
 	Stderr string
 	Code   int
 	Err    error
@@ -83,10 +83,7 @@ func CheckDependency(binary string) error {
 }
 
 func (c *Client) globalArgs() []string {
-	args := make([]string, 0, 8)
-	if c.Options.AccessToken != "" {
-		args = append(args, "--access-token", c.Options.AccessToken)
-	}
+	args := make([]string, 0, 6)
 	if c.Options.ConfigFile != "" {
 		args = append(args, "--config-file", c.Options.ConfigFile)
 	}
@@ -120,10 +117,18 @@ func (c *Client) run(ctx context.Context, sensitiveValues []string, args ...stri
 		command = exec.CommandContext
 	}
 	cmd := command(ctx, binary, args...)
+	if c.Options.AccessToken != "" {
+		cmd.Env = environmentWithValue(os.Environ(), "BWS_ACCESS_TOKEN", c.Options.AccessToken)
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err == nil {
+		if stderr.Len() > 0 && c.Stderr != nil {
+			if _, writeErr := io.WriteString(c.Stderr, stderr.String()); writeErr != nil {
+				return nil, fmt.Errorf("forward bws stderr: %w", writeErr)
+			}
+		}
 		return output, nil
 	}
 	code := 1
@@ -131,7 +136,19 @@ func (c *Client) run(ctx context.Context, sensitiveValues []string, args ...stri
 	if errors.As(err, &exitErr) {
 		code = exitErr.ExitCode()
 	}
-	return nil, &CommandError{Args: args, Stderr: stderr.String(), Code: code, Err: err}
+	return nil, &CommandError{Stderr: stderr.String(), Code: code, Err: err}
+}
+
+func environmentWithValue(base []string, key, value string) []string {
+	environment := make([]string, 0, len(base)+1)
+	for _, pair := range base {
+		name, _, found := strings.Cut(pair, "=")
+		if found && strings.EqualFold(name, key) {
+			continue
+		}
+		environment = append(environment, pair)
+	}
+	return append(environment, key+"="+value)
 }
 
 func maskArgs(args, sensitiveValues []string) []string {
@@ -171,7 +188,7 @@ func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, e
 
 // CreateSecret creates one secret and returns the official response.
 func (c *Client) CreateSecret(ctx context.Context, key, value, projectID, note string) (Secret, error) {
-	if err := validateValue(value); err != nil {
+	if err := ValidateValue(value); err != nil {
 		return Secret{}, err
 	}
 	args := append(c.globalArgs(), "--output", "json", "--color", "no", "secret", "create")
@@ -195,7 +212,7 @@ func (c *Client) EditSecret(ctx context.Context, id string, request EditRequest)
 		args = append(args, "--key", *request.Key)
 	}
 	if request.Value != nil {
-		if err := validateValue(*request.Value); err != nil {
+		if err := ValidateValue(*request.Value); err != nil {
 			return Secret{}, err
 		}
 		args = append(args, "--value="+*request.Value)
@@ -233,7 +250,9 @@ func decodeSecret(output []byte, operation string) (Secret, error) {
 	return secret, nil
 }
 
-func validateValue(value string) error {
+// ValidateValue rejects values that cannot be represented in process arguments
+// or environments.
+func ValidateValue(value string) error {
 	if strings.ContainsRune(value, 0) {
 		return fmt.Errorf("secret value contains a null byte")
 	}
