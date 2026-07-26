@@ -42,7 +42,7 @@ bwenv list immich --include-shared
 bwenv run immich --include-shared -- docker compose up -d
 ```
 
-App values override shared values with the same key. `bwenv run` removes `BWS_ACCESS_TOKEN` before starting the child process.
+App values override shared values with the same key. `bwenv run` removes `BWS_ACCESS_TOKEN` before starting the child process, even if a selected secret uses that key.
 
 ## Install
 
@@ -61,14 +61,14 @@ curl -fsSL https://raw.githubusercontent.com/saiteja-madha/bwenv/main/install.sh
   INSTALL_DIR="$HOME/bin" BWENV_VERSION=v1.0.0 bash
 ```
 
-### Homebrew HEAD
-
-Until the first stable formula is published, build the current main branch through the included formula:
+### Homebrew
 
 ```bash
 brew tap saiteja-madha/bwenv https://github.com/saiteja-madha/bwenv
-brew install --HEAD bwenv
+brew install bwenv
 ```
+
+Use `brew install --HEAD bwenv` to build the current main branch instead.
 
 ### Build from source
 
@@ -106,6 +106,7 @@ Only run trusted commands with `bwenv run`: the child receives the selected secr
 
 - [Documentation index](docs/README.md)
 - [Architecture and security boundaries](docs/architecture.md)
+- [Release and compatibility process](docs/releasing.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)
 

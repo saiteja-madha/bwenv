@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-APP="e2e_$(date +%s)"
+RUN_ID="$(date +%s)_$$_${RANDOM}"
+APP="e2e_${RUN_ID}"
+SHARED_TZ_KEY="E2E_${RUN_ID}_TZ"
+SHARED_LOCALE_KEY="E2E_${RUN_ID}_LOCALE"
 FAILED=0
 
 fail() { printf '  FAIL  %s\n' "$*" >&2; FAILED=1; }
 pass() { printf '  PASS  %s\n' "$*"; }
+check() {
+  local label="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
 
 require() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -24,55 +36,73 @@ require jq
 bws_raw() { bws "$@" --output json --color no; }
 bwenv_cmd() { bwenv --project-id "$BWS_PROJECT_ID" "$@"; }
 
-# ── Cleanup by key pattern ─────────────────────────────────────────
-# Deletes every secret whose key starts with the given prefix.
-# Handles empty/error responses from bws without jq errors.
-cleanup_prefix() {
-  local prefix="$1"
-  bws_raw secret list "$BWS_PROJECT_ID" 2>/dev/null | jq -r '
-    if type == "array" then
-      .[] | select(.key | startswith("'"$prefix"'")) | .id
-    else
-      empty
-    end
-  ' 2>/dev/null | while read -r id; do
-    [[ -n "$id" ]] && bws_raw secret delete "$id" >/dev/null 2>&1 || true
-  done
-}
-
+# Cleanup is restricted to this run's random app namespace and two exact,
+# run-specific shared keys. It never deletes generic shared keys.
 cleanup() {
-  cleanup_prefix "${APP}__"
-  cleanup_prefix shared__TZ
-  cleanup_prefix shared__LOCALE
-}
-trap cleanup EXIT
+  local original_status="$1"
+  local cleanup_failed=0
+  local ids
 
-# ── Startup: delete leftovers from aborted runs ────────────────────
-echo "--- Startup: cleaning stale secrets ---"
-cleanup
-echo ""
+  trap - EXIT
+  ids="$(
+    bws_raw secret list "$BWS_PROJECT_ID" 2>/dev/null |
+      jq -r \
+        --arg app_prefix "${APP}__" \
+        --arg shared_tz "shared__${SHARED_TZ_KEY}" \
+        --arg shared_locale "shared__${SHARED_LOCALE_KEY}" \
+        'if type == "array" then
+           .[]
+           | select(
+               (.key | startswith($app_prefix))
+               or .key == $shared_tz
+               or .key == $shared_locale
+             )
+           | .id
+         else
+           empty
+         end'
+  )" || {
+    printf 'WARN: unable to list test secrets during cleanup\n' >&2
+    cleanup_failed=1
+    ids=""
+  }
+
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    if ! bws_raw secret delete "$id" >/dev/null 2>&1; then
+      printf 'WARN: unable to delete test secret %s\n' "$id" >&2
+      cleanup_failed=1
+    fi
+  done <<<"$ids"
+
+  if [[ "$cleanup_failed" -ne 0 && "$original_status" -eq 0 ]]; then
+    original_status=1
+  fi
+  exit "$original_status"
+}
+trap 'cleanup "$?"' EXIT
 
 strip_cr() { tr -d '\r'; }
 
 echo "=== bwenv e2e ==="
 echo "Project: $BWS_PROJECT_ID"
 echo "App:     $APP"
+echo "Scope:   only ${APP}__* and this run's unique shared keys"
 echo ""
 
 # ── Sanity ──────────────────────────────────────────────────────────
 echo "--- Sanity (no bws project needed) ---"
-bwenv version >/dev/null 2>&1 && pass "version" || fail "version"
-bwenv completion bash >/dev/null 2>&1 && pass "completion bash" || fail "completion bash"
-bwenv completion zsh >/dev/null 2>&1 && pass "completion zsh" || fail "completion zsh"
+check "version" bwenv version
+check "completion bash" bwenv completion bash
+check "completion zsh" bwenv completion zsh
 echo ""
 
 # ── CRUD ────────────────────────────────────────────────────────────
 echo "--- CRUD ---"
 
-bws_raw secret create "${APP}__HOST" db.example.com "$BWS_PROJECT_ID" >/dev/null
-bws_raw secret create "${APP}__PORT" 5432 "$BWS_PROJECT_ID" >/dev/null
-bws_raw secret create "${APP}__SECRET" s3cret! "$BWS_PROJECT_ID" >/dev/null
-pass "created 3 secrets"
+check "create HOST" bwenv_cmd create "$APP" HOST db.example.com
+check "create PORT" bwenv_cmd create "$APP" PORT 5432
+check "create SECRET" bwenv_cmd create "$APP" SECRET 's3cret!'
 
 output=$(bwenv_cmd get "$APP" HOST 2>&1 | strip_cr)
 if echo "$output" | jq -e '.key == "HOST" and .value == "db.example.com"' >/dev/null 2>&1; then
@@ -89,7 +119,7 @@ else
   fail "list: expected 3, got $COUNT: $output"
 fi
 
-bwenv_cmd edit "$APP" PORT --value=9090 >/dev/null 2>&1 && pass "edit PORT value" || fail "edit PORT value"
+check "edit PORT value" bwenv_cmd edit "$APP" PORT --value=9090
 
 output=$(bwenv_cmd get "$APP" PORT 2>&1 | strip_cr)
 if echo "$output" | jq -e '.value == "9090"' >/dev/null 2>&1; then
@@ -98,7 +128,7 @@ else
   fail "verify PORT: $output"
 fi
 
-bwenv_cmd edit "$APP" PORT --key=SERVICE_PORT >/dev/null 2>&1 && pass "edit PORT -> SERVICE_PORT" || fail "edit PORT -> SERVICE_PORT"
+check "edit PORT -> SERVICE_PORT" bwenv_cmd edit "$APP" PORT --key=SERVICE_PORT
 
 output=$(bwenv_cmd get "$APP" SERVICE_PORT 2>&1 | strip_cr)
 if echo "$output" | jq -e '.key == "SERVICE_PORT" and .value == "9090"' >/dev/null 2>&1; then
@@ -107,7 +137,7 @@ else
   fail "verify SERVICE_PORT: $output"
 fi
 
-bwenv_cmd delete "$APP" SERVICE_PORT HOST >/dev/null 2>&1 && pass "delete SERVICE_PORT HOST" || fail "delete SERVICE_PORT HOST"
+check "delete SERVICE_PORT HOST" bwenv_cmd delete "$APP" SERVICE_PORT HOST
 
 output=$(bwenv_cmd list "$APP" 2>&1 | strip_cr)
 COUNT=$(echo "$output" | jq length)
@@ -138,37 +168,46 @@ else
   fail "import upsert: created=$CREATED updated=$UPDATED: $output"
 fi
 
+output=$(printf "DB_USER=root\nLOG_LEVEL=debug" | bwenv_cmd import "$APP" - 2>&1 | strip_cr)
+UNCHANGED=$(echo "$output" | jq -r '.unchanged | length')
+if [[ "$UNCHANGED" -eq 2 ]]; then
+  pass "import reports 2 unchanged secrets"
+else
+  fail "import unchanged: expected 2, got $UNCHANGED: $output"
+fi
+
 echo ""
 
 # ── Shared ──────────────────────────────────────────────────────────
 echo "--- Shared ---"
 
-bws_raw secret create shared__TZ UTC "$BWS_PROJECT_ID" >/dev/null
-bws_raw secret create shared__LOCALE en_US "$BWS_PROJECT_ID" >/dev/null
-bws_raw secret create "${APP}__TZ" America/New_York "$BWS_PROJECT_ID" >/dev/null
+check "create unique shared timezone" bwenv_cmd create shared "$SHARED_TZ_KEY" UTC
+check "create unique shared locale" bwenv_cmd create shared "$SHARED_LOCALE_KEY" en_US
+check "create app override for shared timezone" \
+  bwenv_cmd create "$APP" "$SHARED_TZ_KEY" America/New_York
 
 output=$(bwenv_cmd list "$APP" 2>&1 | strip_cr)
-APP_TZ=$(echo "$output" | jq -r '.[] | select(.key == "TZ") | .value')
+APP_TZ=$(echo "$output" | jq -r --arg key "$SHARED_TZ_KEY" '.[] | select(.key == $key) | .value')
 if [[ "$APP_TZ" == "America/New_York" ]]; then
-  pass "list includes app TZ (no --include-shared)"
+  pass "list includes app override (no --include-shared)"
 else
-  fail "list app TZ: $APP_TZ"
+  fail "list app override: $APP_TZ"
 fi
 
 output=$(bwenv_cmd list "$APP" --include-shared 2>&1 | strip_cr)
-TZ_VAL=$(echo "$output" | jq -r '.[] | select(.key == "TZ") | .value')
-LOCALE_VAL=$(echo "$output" | jq -r '.[] | select(.key == "LOCALE") | .value')
+TZ_VAL=$(echo "$output" | jq -r --arg key "$SHARED_TZ_KEY" '.[] | select(.key == $key) | .value')
+LOCALE_VAL=$(echo "$output" | jq -r --arg key "$SHARED_LOCALE_KEY" '.[] | select(.key == $key) | .value')
 if [[ "$TZ_VAL" == "America/New_York" && "$LOCALE_VAL" == "en_US" ]]; then
-  pass "list --include-shared: app TZ overrides shared, LOCALE inherited"
+  pass "list --include-shared: app value overrides shared, shared-only value inherited"
 else
-  fail "list --include-shared: TZ=$TZ_VAL LOCALE=$LOCALE_VAL"
+  fail "list --include-shared: override=$TZ_VAL inherited=$LOCALE_VAL"
 fi
 
-output=$(bwenv_cmd get "$APP" TZ --include-shared 2>&1 | strip_cr)
+output=$(bwenv_cmd get "$APP" "$SHARED_TZ_KEY" --include-shared 2>&1 | strip_cr)
 if echo "$output" | jq -e '.value == "America/New_York"' >/dev/null 2>&1; then
-  pass "get TZ --include-shared returns app value"
+  pass "get --include-shared returns app value"
 else
-  fail "get TZ --include-shared: $output"
+  fail "get --include-shared: $output"
 fi
 
 echo ""
@@ -197,11 +236,11 @@ else
   fail "run: app__ prefix leaked: '$PREFIXED'"
 fi
 
-TZ_VAL=$(bwenv_cmd run "$APP" --include-shared -- printenv TZ 2>&1 | strip_cr | head -1)
+TZ_VAL=$(bwenv_cmd run "$APP" --include-shared -- printenv "$SHARED_TZ_KEY" 2>&1 | strip_cr | head -1)
 if [[ "$TZ_VAL" == "America/New_York" ]]; then
-  pass "run --include-shared: TZ=America/New_York"
+  pass "run --include-shared: app value overrides shared"
 else
-  fail "run --include-shared: TZ expected America/New_York, got '$TZ_VAL'"
+  fail "run --include-shared: expected America/New_York, got '$TZ_VAL'"
 fi
 
 INHERIT_COUNT=$(bwenv_cmd run "$APP" --no-inherit-env -- env 2>&1 | strip_cr | wc -l | tr -d ' ')
@@ -237,12 +276,11 @@ echo ""
 # ── Edge Cases ──────────────────────────────────────────────────────
 echo "--- Edge cases ---"
 
-# Values starting with '--' cannot be passed through bwenv directly
-# because Cobra interprets them as unknown flags. bwenv handles them
-# internally via the '--' separator when calling bws, but the CLI
-# itself can't accept them as positional args.
-# Test via raw bws with '--' before the key to protect '--flag-value':
-bws --output json --color no secret create -- "${APP}__DASHED" '--flag-value' "$BWS_PROJECT_ID" >/dev/null
+if bwenv_cmd create "$APP" DASHED -- '--flag-value' >/dev/null 2>&1; then
+  pass "create preserves a value beginning with --"
+else
+  fail "create rejected a value beginning with --"
+fi
 output=$(bwenv_cmd get "$APP" DASHED 2>&1 | strip_cr)
 if echo "$output" | jq -e '.value == "--flag-value"' >/dev/null 2>&1; then
   pass "get DASHED: --flag-value preserved"
@@ -271,7 +309,7 @@ else
   fail "delete duplicate key: $output"
 fi
 
-bwenv_cmd create "$APP" DRY_RUN_TEST "should-not-exist" --dry-run >/dev/null 2>&1 && pass "create --dry-run" || fail "create --dry-run"
+check "create --dry-run" bwenv_cmd create "$APP" DRY_RUN_TEST "should-not-exist" --dry-run
 output=$(bwenv_cmd list "$APP" 2>&1 | strip_cr)
 if echo "$output" | jq -e '.[] | select(.key == "DRY_RUN_TEST")' >/dev/null 2>&1; then
   fail "create --dry-run: key was actually created"

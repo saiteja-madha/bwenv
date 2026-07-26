@@ -14,7 +14,10 @@ make verify
 make test-race
 ```
 
-For a manual integration test, install the official `bws` CLI and use a disposable project. Never commit access tokens, fixture secrets, exported environments, or local config files.
+For a manual integration test, install the official `bws` CLI and follow the
+[live E2E instructions](docs/testing.md) using a disposable project. Never
+commit access tokens, fixture secrets, exported environments, or local config
+files.
 
 ## Making a change
 
@@ -36,7 +39,11 @@ make test       # unit and command tests
 make test-race  # race detector
 make vet        # Go static analysis
 make lint       # golangci-lint, when installed
+make shellcheck # all installer and maintenance shell scripts
+make compat     # compare an installed bws with the wrapped CLI contract
 ```
+
+`make compat` requires an installed official `bws` binary but does not require a token, project, or network call to Bitwarden. Offline compatibility-script fixtures run as part of `make verify`.
 
 ## Documentation
 

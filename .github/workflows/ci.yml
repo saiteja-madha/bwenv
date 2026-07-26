@@ -14,13 +14,17 @@ jobs:
     name: Format, vet, and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
       - name: Verify
         run: make verify
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+      - name: ShellCheck
+        run: make shellcheck
       - name: Race tests
         run: make test-race
 
@@ -32,7 +36,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -44,3 +48,15 @@ jobs:
       - name: Smoke test
         shell: bash
         run: ./bwenv${{ runner.os == 'Windows' && '.exe' || '' }} version
+      - name: Test installer
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/test-installer.sh
+      - name: Test stable Homebrew formula
+        if: runner.os == 'macOS'
+        run: |
+          brew style Formula/bwenv.rb
+          brew tap-new --no-git test/bwenv
+          cp Formula/bwenv.rb "$(brew --repository test/bwenv)/Formula/bwenv.rb"
+          brew install test/bwenv/bwenv
+          brew test test/bwenv/bwenv

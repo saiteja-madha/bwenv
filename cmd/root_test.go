@@ -124,6 +124,17 @@ func TestCreateIsNotUpsert(t *testing.T) {
 	}
 }
 
+func TestCreateAcceptsValueBeginningWithDash(t *testing.T) {
+	client := &fakeClient{}
+	_, _, err := executeForTest(t, client, "", "create", "photos", "TOKEN", "--", "--leading-dash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.created) != 1 || client.created[0].Value != "--leading-dash" {
+		t.Fatalf("leading-dash value was not preserved: %#v", client.created)
+	}
+}
+
 func TestImportListsOnceAndUpserts(t *testing.T) {
 	client := &fakeClient{secrets: []bws.Secret{{ID: "existing", Key: "photos__TOKEN", Value: "old"}}}
 	stdout, _, err := executeForTest(t, client, "TOKEN=new\nPORT=8080\n", "import", "photos", "-")
@@ -146,6 +157,34 @@ func TestImportDuplicateUsesFinalDefinition(t *testing.T) {
 	}
 	if len(client.created) != 1 || client.created[0].Value != "last" {
 		t.Fatalf("duplicate dotenv handling = %#v", client.created)
+	}
+}
+
+func TestImportSkipsUnchangedValues(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{
+		{ID: "same", Key: "photos__TOKEN", Value: "unchanged"},
+		{ID: "changed", Key: "photos__PORT", Value: "80"},
+	}}
+	stdout, _, err := executeForTest(t, client, "TOKEN=unchanged\nPORT=443\n", "import", "photos", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.editRequests) != 1 || len(client.editedIDs) != 1 || client.editedIDs[0] != "changed" {
+		t.Fatalf("import edited unchanged values: ids=%#v requests=%#v", client.editedIDs, client.editRequests)
+	}
+	if !strings.Contains(stdout, `"unchanged": [`) || !strings.Contains(stdout, `"TOKEN"`) {
+		t.Fatalf("import summary does not report unchanged key: %s", stdout)
+	}
+}
+
+func TestImportRejectsAllNullValuesBeforeMutation(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{{ID: "existing", Key: "photos__FIRST", Value: "old"}}}
+	_, _, err := executeForTest(t, client, "FIRST=new\nSECOND=contains\x00null\n", "import", "photos", "-")
+	if err == nil || !strings.Contains(err.Error(), "null byte") {
+		t.Fatalf("expected null-byte error, got %v", err)
+	}
+	if client.listCalls != 0 || len(client.created) != 0 || len(client.editedIDs) != 0 {
+		t.Fatalf("import performed work before complete validation: list=%d create=%d edit=%d", client.listCalls, len(client.created), len(client.editedIDs))
 	}
 }
 
@@ -222,5 +261,65 @@ func TestBuildEnvironmentUsesNormalizedUUIDs(t *testing.T) {
 	want := "_64246aa4_70b3_4332_8587_8b1284ce6d76=secret"
 	if !contains(env, want) {
 		t.Fatalf("UUID environment missing %q: %#v", want, env)
+	}
+}
+
+func TestBuildEnvironmentNeverAddsAccessToken(t *testing.T) {
+	t.Setenv("bws_access_token", "inherited-token")
+	entries := []environment.Entry{
+		{Secret: bws.Secret{Key: "BWS_ACCESS_TOKEN", Value: "secret-token"}},
+		{Secret: bws.Secret{Key: "SAFE", Value: "value"}},
+	}
+	env := buildEnvironment(entries, false, false)
+	for _, pair := range env {
+		key := strings.SplitN(pair, "=", 2)[0]
+		if strings.EqualFold(key, "BWS_ACCESS_TOKEN") {
+			t.Fatalf("child environment contains access token: %q", pair)
+		}
+	}
+	if !contains(env, "SAFE=value") {
+		t.Fatalf("child environment lost non-reserved secret: %#v", env)
+	}
+}
+
+func TestRunWithoutCommandOnTerminalFailsBeforeListing(t *testing.T) {
+	client := &fakeClient{}
+	var stdout, stderr bytes.Buffer
+	deps := &runtimeDeps{
+		client: client,
+		stdin:  strings.NewReader(""),
+		stdout: &stdout,
+		stderr: &stderr,
+		getenv: func(key string) string {
+			if key == "BWS_PROJECT_ID" {
+				return "project-id"
+			}
+			return ""
+		},
+		stdinIsTerminal: func() bool { return true },
+	}
+	root := newRootCommand(deps)
+	root.SetArgs([]string{"run", "photos"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no command provided") {
+		t.Fatalf("expected missing-command error, got %v", err)
+	}
+	if client.listCalls != 0 {
+		t.Fatalf("run fetched secrets before validating the command: list calls=%d", client.listCalls)
+	}
+}
+
+func TestBuildShellCommandPreservesArgumentBoundaries(t *testing.T) {
+	posix := buildShellCommand([]string{"printf", "[%s]", "a b", "it's"}, "sh")
+	if posix != `'printf' '[%s]' 'a b' 'it'"'"'s'` {
+		t.Fatalf("POSIX command = %q", posix)
+	}
+	powerShell := buildShellCommand([]string{"Write-Output", "a b", "it's"}, "pwsh.exe")
+	if powerShell != `& 'Write-Output' 'a b' 'it''s'` {
+		t.Fatalf("PowerShell command = %q", powerShell)
+	}
+	verbatim := `printf '%s' "$TOKEN" && true`
+	if got := buildShellCommand([]string{verbatim}, "sh"); got != verbatim {
+		t.Fatalf("single command string changed: %q", got)
 	}
 }

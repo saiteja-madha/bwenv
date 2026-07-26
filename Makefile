@@ -5,7 +5,9 @@ LDFLAGS := -s -w -X bwenv/cmd.Version=$(VERSION) -X bwenv/cmd.Commit=$(COMMIT) -
 PREFIX ?= /usr/local
 DESTDIR ?=
 
-.PHONY: build build-all clean install test test-race fmt fmt-check vet lint verify run
+SHELL_SCRIPTS := install.sh $(wildcard scripts/*.sh)
+
+.PHONY: build build-all clean install test test-race fmt fmt-check vet lint shellcheck compat verify run
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bwenv .
@@ -43,10 +45,18 @@ vet:
 lint:
 	golangci-lint run
 
+shellcheck:
+	shellcheck $(SHELL_SCRIPTS)
+
+compat:
+	./scripts/check-bws-compat.sh
+
 verify: fmt-check vet test
-	bash -n install.sh scripts/check-doc-links.sh scripts/e2e.sh scripts/test-installer.sh
+	bash -n $(SHELL_SCRIPTS)
 	./scripts/check-doc-links.sh
 	./scripts/test-installer.sh
+	./scripts/test-bws-compat.sh
+	./scripts/test-homebrew-formula.sh
 
 run: build
 	./bwenv $(ARGS)
