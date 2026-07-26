@@ -14,7 +14,10 @@ make verify
 make test-race
 ```
 
-For a manual integration test, install the official `bws` CLI and use a disposable project. Never commit access tokens, fixture secrets, exported environments, or local config files.
+For a manual integration test, install the official `bws` CLI and follow the
+[live E2E instructions](docs/testing.md) using a disposable project. Never
+commit access tokens, fixture secrets, exported environments, or local config
+files.
 
 ## Making a change
 

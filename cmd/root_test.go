@@ -124,6 +124,17 @@ func TestCreateIsNotUpsert(t *testing.T) {
 	}
 }
 
+func TestCreateAcceptsValueBeginningWithDash(t *testing.T) {
+	client := &fakeClient{}
+	_, _, err := executeForTest(t, client, "", "create", "photos", "TOKEN", "--", "--leading-dash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.created) != 1 || client.created[0].Value != "--leading-dash" {
+		t.Fatalf("leading-dash value was not preserved: %#v", client.created)
+	}
+}
+
 func TestImportListsOnceAndUpserts(t *testing.T) {
 	client := &fakeClient{secrets: []bws.Secret{{ID: "existing", Key: "photos__TOKEN", Value: "old"}}}
 	stdout, _, err := executeForTest(t, client, "TOKEN=new\nPORT=8080\n", "import", "photos", "-")
