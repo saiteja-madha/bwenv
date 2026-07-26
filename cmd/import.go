@@ -45,9 +45,12 @@ func newImportCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				return fmt.Errorf("parse dotenv input: %w", err)
 			}
 			keys := make([]string, 0, len(values))
-			for key := range values {
+			for key, value := range values {
 				if err := environment.ValidateKey(key); err != nil {
 					return err
+				}
+				if err := bws.ValidateValue(value); err != nil {
+					return fmt.Errorf("invalid value for environment key %s: %w", key, err)
 				}
 				keys = append(keys, key)
 			}

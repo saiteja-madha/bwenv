@@ -42,7 +42,7 @@ bwenv list immich --include-shared
 bwenv run immich --include-shared -- docker compose up -d
 ```
 
-App values override shared values with the same key. `bwenv run` removes `BWS_ACCESS_TOKEN` before starting the child process.
+App values override shared values with the same key. `bwenv run` removes `BWS_ACCESS_TOKEN` before starting the child process, even if a selected secret uses that key.
 
 ## Install
 

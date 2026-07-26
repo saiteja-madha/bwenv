@@ -43,7 +43,7 @@ Creates `<app>__<key>`. It refuses to overwrite or create a second secret with t
 bwenv import <app> <file|-> [--dry-run]
 ```
 
-Parses dotenv syntax and upserts every key. `-` reads stdin. The entire input and all key names are validated before writes begin. Operations are sorted by key and use one initial project listing. Remote writes are not transactional: on failure, the error reports how many prior operations completed.
+Parses dotenv syntax and upserts every key. `-` reads stdin. The entire input, all key names, and every value are validated before the project is listed or writes begin. Operations are sorted by key and use one initial project listing. Remote writes are not transactional: on failure, the error reports how many prior operations completed.
 
 If a dotenv file defines the same key more than once, the final definition wins.
 
@@ -87,7 +87,7 @@ Resolves every key before deleting anything, then uses official `bws` multi-dele
 bwenv export <app> [--include-shared]
 ```
 
-Writes the effective environment to stdout. Its default format is dotenv-style `KEY="VALUE"`; an explicit global `--output` selects another supported representation.
+Writes the effective environment to stdout. Its default format is lossless dotenv syntax suitable for a later `bwenv import`; an explicit global `--output` selects another supported representation.
 
 ### run
 
@@ -96,7 +96,7 @@ bwenv run <app> [--include-shared] [--shell SHELL] [--no-inherit-env]
                 [--uuids-as-keynames] -- <command>
 ```
 
-Uses `sh` on macOS/Linux and PowerShell on Windows unless `--shell` is supplied. With no command arguments, it reads a command from stdin. The child inherits the current environment by default, except `BWS_ACCESS_TOKEN` is always removed. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
+Uses `sh` on macOS/Linux and PowerShell on Windows unless `--shell` is supplied. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
 
 The child’s exit code becomes bwenv’s exit code. Only run trusted commands.
 
@@ -115,8 +115,8 @@ JSON and YAML retain official secret fields such as `id`, `projectId`, `value`, 
 
 ## Failure and security behavior
 
-- Official `bws` stderr and nonzero exit codes are preserved.
+- Official `bws` stderr is preserved on successful and failed calls, and nonzero exit codes are preserved.
 - Access tokens, values, and notes are masked in verbose subprocess logs.
-- Null bytes are rejected because operating-system process arguments and environments cannot carry them.
+- Null bytes are rejected before remote work begins because operating-system process arguments and environments cannot carry them.
 - Values passed to `create` and `edit` remain visible in local process listings while the official `bws` subprocess runs.
 - Duplicate stored full keys are errors; bwenv never selects one arbitrarily.

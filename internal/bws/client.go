@@ -124,6 +124,11 @@ func (c *Client) run(ctx context.Context, sensitiveValues []string, args ...stri
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err == nil {
+		if stderr.Len() > 0 && c.Stderr != nil {
+			if _, writeErr := io.WriteString(c.Stderr, stderr.String()); writeErr != nil {
+				return nil, fmt.Errorf("forward bws stderr: %w", writeErr)
+			}
+		}
 		return output, nil
 	}
 	code := 1
@@ -171,7 +176,7 @@ func (c *Client) ListSecrets(ctx context.Context, projectID string) ([]Secret, e
 
 // CreateSecret creates one secret and returns the official response.
 func (c *Client) CreateSecret(ctx context.Context, key, value, projectID, note string) (Secret, error) {
-	if err := validateValue(value); err != nil {
+	if err := ValidateValue(value); err != nil {
 		return Secret{}, err
 	}
 	args := append(c.globalArgs(), "--output", "json", "--color", "no", "secret", "create")
@@ -195,7 +200,7 @@ func (c *Client) EditSecret(ctx context.Context, id string, request EditRequest)
 		args = append(args, "--key", *request.Key)
 	}
 	if request.Value != nil {
-		if err := validateValue(*request.Value); err != nil {
+		if err := ValidateValue(*request.Value); err != nil {
 			return Secret{}, err
 		}
 		args = append(args, "--value="+*request.Value)
@@ -233,7 +238,9 @@ func decodeSecret(output []byte, operation string) (Secret, error) {
 	return secret, nil
 }
 
-func validateValue(value string) error {
+// ValidateValue rejects values that cannot be represented in process arguments
+// or environments.
+func ValidateValue(value string) error {
 	if strings.ContainsRune(value, 0) {
 		return fmt.Errorf("secret value contains a null byte")
 	}
