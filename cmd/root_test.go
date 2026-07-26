@@ -149,6 +149,23 @@ func TestImportDuplicateUsesFinalDefinition(t *testing.T) {
 	}
 }
 
+func TestImportSkipsUnchangedValues(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{
+		{ID: "same", Key: "photos__TOKEN", Value: "unchanged"},
+		{ID: "changed", Key: "photos__PORT", Value: "80"},
+	}}
+	stdout, _, err := executeForTest(t, client, "TOKEN=unchanged\nPORT=443\n", "import", "photos", "-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.editRequests) != 1 || len(client.editedIDs) != 1 || client.editedIDs[0] != "changed" {
+		t.Fatalf("import edited unchanged values: ids=%#v requests=%#v", client.editedIDs, client.editRequests)
+	}
+	if !strings.Contains(stdout, `"unchanged": [`) || !strings.Contains(stdout, `"TOKEN"`) {
+		t.Fatalf("import summary does not report unchanged key: %s", stdout)
+	}
+}
+
 func TestImportRejectsAllNullValuesBeforeMutation(t *testing.T) {
 	client := &fakeClient{secrets: []bws.Secret{{ID: "existing", Key: "photos__FIRST", Value: "old"}}}
 	_, _, err := executeForTest(t, client, "FIRST=new\nSECOND=contains\x00null\n", "import", "photos", "-")
@@ -278,5 +295,20 @@ func TestRunWithoutCommandOnTerminalFailsBeforeListing(t *testing.T) {
 	}
 	if client.listCalls != 0 {
 		t.Fatalf("run fetched secrets before validating the command: list calls=%d", client.listCalls)
+	}
+}
+
+func TestBuildShellCommandPreservesArgumentBoundaries(t *testing.T) {
+	posix := buildShellCommand([]string{"printf", "[%s]", "a b", "it's"}, "sh")
+	if posix != `'printf' '[%s]' 'a b' 'it'"'"'s'` {
+		t.Fatalf("POSIX command = %q", posix)
+	}
+	powerShell := buildShellCommand([]string{"Write-Output", "a b", "it's"}, "pwsh.exe")
+	if powerShell != `& 'Write-Output' 'a b' 'it''s'` {
+		t.Fatalf("PowerShell command = %q", powerShell)
+	}
+	verbatim := `printf '%s' "$TOKEN" && true`
+	if got := buildShellCommand([]string{verbatim}, "sh"); got != verbatim {
+		t.Fatalf("single command string changed: %q", got)
 	}
 }

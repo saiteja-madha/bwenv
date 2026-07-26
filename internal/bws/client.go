@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -41,7 +42,6 @@ type EditRequest struct {
 
 // CommandError preserves bws stderr and its process exit code.
 type CommandError struct {
-	Args   []string
 	Stderr string
 	Code   int
 	Err    error
@@ -83,10 +83,7 @@ func CheckDependency(binary string) error {
 }
 
 func (c *Client) globalArgs() []string {
-	args := make([]string, 0, 8)
-	if c.Options.AccessToken != "" {
-		args = append(args, "--access-token", c.Options.AccessToken)
-	}
+	args := make([]string, 0, 6)
 	if c.Options.ConfigFile != "" {
 		args = append(args, "--config-file", c.Options.ConfigFile)
 	}
@@ -120,6 +117,9 @@ func (c *Client) run(ctx context.Context, sensitiveValues []string, args ...stri
 		command = exec.CommandContext
 	}
 	cmd := command(ctx, binary, args...)
+	if c.Options.AccessToken != "" {
+		cmd.Env = environmentWithValue(os.Environ(), "BWS_ACCESS_TOKEN", c.Options.AccessToken)
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
@@ -136,7 +136,19 @@ func (c *Client) run(ctx context.Context, sensitiveValues []string, args ...stri
 	if errors.As(err, &exitErr) {
 		code = exitErr.ExitCode()
 	}
-	return nil, &CommandError{Args: args, Stderr: stderr.String(), Code: code, Err: err}
+	return nil, &CommandError{Stderr: stderr.String(), Code: code, Err: err}
+}
+
+func environmentWithValue(base []string, key, value string) []string {
+	environment := make([]string, 0, len(base)+1)
+	for _, pair := range base {
+		name, _, found := strings.Cut(pair, "=")
+		if found && strings.EqualFold(name, key) {
+			continue
+		}
+		environment = append(environment, pair)
+	}
+	return append(environment, key+"="+value)
 }
 
 func maskArgs(args, sensitiveValues []string) []string {

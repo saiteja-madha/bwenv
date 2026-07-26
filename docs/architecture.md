@@ -17,7 +17,7 @@ flowchart LR
 ## Subsystems
 
 - `cmd` owns Cobra command construction, dependency injection, stdio, and exit-code translation. Help, version, and completion generation do not initialize Bitwarden dependencies.
-- `internal/bws` is the only Bitwarden I/O boundary. It constructs official arguments, forces machine-readable JSON for internal operations, masks sensitive verbose output, and preserves subprocess errors.
+- `internal/bws` is the only Bitwarden I/O boundary. It constructs official arguments, injects explicit access tokens through the subprocess environment, forces machine-readable JSON for internal operations, masks sensitive verbose output, and preserves subprocess errors without retaining sensitive arguments.
 - `internal/environment` owns `<app>__KEY`, validation, exact resolution, duplicate detection, normalization, stable ordering, and shared/app precedence.
 - `internal/output` renders already-normalized entries. It must not perform Bitwarden calls or environment selection.
 
@@ -25,9 +25,9 @@ flowchart LR
 
 Read commands list one project in JSON, decode official secret records, select app/shared prefixes, normalize keys, and render. Mutations first list the project to enforce the environment namespace’s uniqueness rules, then call official create/edit/delete operations.
 
-Import parses and validates every key and value in the complete dotenv input before remote work, lists once, builds a full-key index, and applies sorted upserts. It is fail-fast but not transactional because the official CLI exposes independent remote operations.
+Import parses and validates every key and value in the complete dotenv input before remote work, lists once, builds a full-key index, skips unchanged values, and applies sorted upserts. It is fail-fast but not transactional because the official CLI exposes independent remote operations.
 
-Run validates its command and shell before fetching secrets, performs the same single-list and merge path, converts entries to a unique environment map, ensures no case variant of the machine access-token variable remains, and starts a shell with inherited stdio. It waits for the child so exit status is portable across macOS, Linux, and Windows.
+Run validates its command and shell before fetching secrets, performs the same single-list and merge path, converts entries to a unique environment map, ensures no case variant of the machine access-token variable remains, and starts a shell with inherited stdio. Multiple command arguments are quoted for the selected shell; a single command string is preserved verbatim for explicit shell syntax. It waits for the child so exit status is portable across macOS, Linux, and Windows.
 
 ## Security invariants
 

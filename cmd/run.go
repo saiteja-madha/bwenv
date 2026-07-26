@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -40,20 +41,6 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 					uuidsAsKeynames = parsed
 				}
 			}
-			userCommand := strings.Join(args[1:], " ")
-			if userCommand == "" {
-				if deps.stdinIsTerminal != nil && deps.stdinIsTerminal() {
-					return fmt.Errorf("no command provided")
-				}
-				data, err := io.ReadAll(deps.stdin)
-				if err != nil {
-					return fmt.Errorf("read command from stdin: %w", err)
-				}
-				userCommand = string(data)
-			}
-			if strings.TrimSpace(userCommand) == "" {
-				return fmt.Errorf("no command provided")
-			}
 			if shell == "" {
 				if runtime.GOOS == "windows" {
 					shell = "powershell"
@@ -63,6 +50,22 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 			}
 			if _, err := exec.LookPath(shell); err != nil {
 				return fmt.Errorf("shell %q not found: %w", shell, err)
+			}
+			var userCommand string
+			if len(args) == 1 {
+				if deps.stdinIsTerminal != nil && deps.stdinIsTerminal() {
+					return fmt.Errorf("no command provided")
+				}
+				data, err := io.ReadAll(deps.stdin)
+				if err != nil {
+					return fmt.Errorf("read command from stdin: %w", err)
+				}
+				userCommand = string(data)
+			} else {
+				userCommand = buildShellCommand(args[1:], shell)
+			}
+			if strings.TrimSpace(userCommand) == "" {
+				return fmt.Errorf("no command provided")
 			}
 			entries, err := loadEntries(cmd, cfg, deps, args[0], includeShared)
 			if err != nil {
@@ -145,4 +148,32 @@ func buildEnvironment(entries []environment.Entry, noInherit, uuidsAsKeynames bo
 
 func isAccessTokenKey(key string) bool {
 	return strings.EqualFold(key, "BWS_ACCESS_TOKEN")
+}
+
+func buildShellCommand(args []string, shell string) string {
+	if len(args) == 1 {
+		return args[0]
+	}
+	quote := quotePOSIXArgument
+	switch strings.ToLower(filepath.Base(shell)) {
+	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+		quoted := make([]string, len(args))
+		for i, arg := range args {
+			quoted[i] = quotePowerShellArgument(arg)
+		}
+		return "& " + strings.Join(quoted, " ")
+	}
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = quote(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quotePOSIXArgument(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func quotePowerShellArgument(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
