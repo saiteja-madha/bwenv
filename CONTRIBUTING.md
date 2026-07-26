@@ -36,7 +36,11 @@ make test       # unit and command tests
 make test-race  # race detector
 make vet        # Go static analysis
 make lint       # golangci-lint, when installed
+make shellcheck # all installer and maintenance shell scripts
+make compat     # compare an installed bws with the wrapped CLI contract
 ```
+
+`make compat` requires an installed official `bws` binary but does not require a token, project, or network call to Bitwarden. Offline compatibility-script fixtures run as part of `make verify`.
 
 ## Documentation
 
