@@ -49,8 +49,7 @@ func newEditCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				request.Note = &note
 			}
 			if dryRun {
-				_, err = fmt.Fprintf(deps.stdout, "edit %s\n", secret.Key)
-				return err
+				return renderDryRun(deps.stdout, cfg.output, cfg.color, fmt.Sprintf("edit %s\n", secret.Key))
 			}
 			updated, err := deps.client.EditSecret(cmd.Context(), secret.ID, request)
 			if err != nil {
