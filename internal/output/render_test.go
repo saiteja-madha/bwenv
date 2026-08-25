@@ -86,10 +86,22 @@ func TestJSONUsesNormalizedKeyAndSource(t *testing.T) {
 
 func TestColorYesAddsANSI(t *testing.T) {
 	var buffer bytes.Buffer
-	if err := RenderEntries(&buffer, outputFixture()[:1], "env", false, "yes"); err != nil {
+	if err := RenderEntries(&buffer, outputFixture()[:1], "table", false, "yes"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(buffer.String(), "\x1b[36m") || !strings.HasSuffix(buffer.String(), "\x1b[0m") {
 		t.Fatalf("color output missing ANSI wrapper: %q", buffer.String())
+	}
+}
+
+func TestColorYesKeepsMachineFormatsVerbatim(t *testing.T) {
+	for _, format := range []string{"json", "yaml", "env"} {
+		var buffer bytes.Buffer
+		if err := RenderEntries(&buffer, outputFixture()[:1], format, true, "yes"); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(buffer.String(), "\x1b[") {
+			t.Fatalf("%s output contains ANSI codes: %q", format, buffer.String())
+		}
 	}
 }
