@@ -520,3 +520,49 @@ func TestRunRejectsInvalidUUIDsAsKeynamesEnvironment(t *testing.T) {
 		t.Fatalf("run fetched secrets before validating the flag: list calls=%d", client.listCalls)
 	}
 }
+
+func TestListAllReportsSortedAppNamespaces(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{
+		{ID: "1", Key: "paperless__DB", Value: "v"},
+		{ID: "2", Key: "immich__TOKEN", Value: "v"},
+		{ID: "3", Key: "immich__DB", Value: "v"},
+		{ID: "4", Key: "shared__TZ", Value: "v"},
+		{ID: "5", Key: "NotAConvention", Value: "v"},
+	}}
+	stdout, _, err := executeForTest(t, client, "", "list", "--all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{"immich", "paperless"} {
+		if !strings.Contains(stdout, fragment) {
+			t.Fatalf("app list missing %q: %s", fragment, stdout)
+		}
+	}
+	if strings.Contains(stdout, "shared") || strings.Contains(stdout, "NotAConvention") {
+		t.Fatalf("app list leaked non-app secrets: %s", stdout)
+	}
+	if strings.Index(stdout, "immich") > strings.Index(stdout, "paperless") {
+		t.Fatalf("app list is not sorted: %s", stdout)
+	}
+}
+
+func TestListAllIncludesSharedWhenRequested(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{{ID: "1", Key: "shared__TZ", Value: "utc"}}}
+	stdout, _, err := executeForTest(t, client, "", "list", "--all", "--include-shared")
+	if err != nil || !strings.Contains(stdout, "shared") {
+		t.Fatalf("expected shared namespace in list: %q, %v", stdout, err)
+	}
+}
+
+func TestListRejectsAppWithAllFlag(t *testing.T) {
+	client := &fakeClient{}
+	if _, _, err := executeForTest(t, client, "", "list", "--all", "photos"); err == nil {
+		t.Fatal("expected --all + app error")
+	}
+	if _, _, err := executeForTest(t, client, "", "list"); err == nil || !strings.Contains(err.Error(), "--all") {
+		t.Fatalf("expected missing-argument guidance, got %v", err)
+	}
+	if client.listCalls != 0 {
+		t.Fatal("invalid list usage fetched secrets")
+	}
+}
