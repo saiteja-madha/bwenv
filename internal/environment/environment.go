@@ -11,7 +11,14 @@ import (
 	"bwenv/internal/bws"
 )
 
-const separator = "__"
+const (
+	// Separator joins an app namespace with its environment key.
+	Separator = "__"
+	// SharedNamespace is the reserved shared app namespace.
+	SharedNamespace = "shared"
+)
+
+const separator = Separator
 
 var (
 	appPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -93,17 +100,17 @@ func Get(secrets []bws.Secret, app, key string, includeShared bool) (Entry, erro
 		return normalize(secret, app, "app"), nil
 	}
 	var notFound *NotFoundError
-	if !includeShared || app == "shared" || !errors.As(err, &notFound) {
+	if !includeShared || app == SharedNamespace || !errors.As(err, &notFound) {
 		return Entry{}, err
 	}
-	secret, sharedErr := Resolve(secrets, "shared", key)
+	secret, sharedErr := Resolve(secrets, SharedNamespace, key)
 	if sharedErr != nil {
 		if errors.As(sharedErr, &notFound) {
 			return Entry{}, err
 		}
 		return Entry{}, sharedErr
 	}
-	return normalize(secret, "shared", "shared"), nil
+	return normalize(secret, SharedNamespace, SharedNamespace), nil
 }
 
 // Merge builds the effective environment. Shared entries are loaded first and
@@ -113,8 +120,8 @@ func Merge(secrets []bws.Secret, app string, includeShared bool) ([]Entry, error
 		return nil, err
 	}
 	entries := make(map[string]Entry)
-	if includeShared && app != "shared" {
-		shared, err := collect(secrets, "shared", "shared")
+	if includeShared && app != SharedNamespace {
+		shared, err := collect(secrets, SharedNamespace, SharedNamespace)
 		if err != nil {
 			return nil, err
 		}
