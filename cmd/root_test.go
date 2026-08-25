@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -312,7 +313,7 @@ func TestRunPropagatesSignalExitCode(t *testing.T) {
 
 func TestBuildEnvironmentUsesNormalizedUUIDs(t *testing.T) {
 	entries := []environment.Entry{{Secret: bws.Secret{ID: "64246aa4-70b3-4332-8587-8b1284ce6d76", Key: "TOKEN", Value: "secret"}}}
-	env := buildEnvironment(entries, true, true)
+	env := buildEnvironment(nil, nil, entries, true, true)
 	want := "_64246aa4_70b3_4332_8587_8b1284ce6d76=secret"
 	if !contains(env, want) {
 		t.Fatalf("UUID environment missing %q: %#v", want, env)
@@ -325,7 +326,7 @@ func TestBuildEnvironmentNeverAddsAccessToken(t *testing.T) {
 		{Secret: bws.Secret{Key: "BWS_ACCESS_TOKEN", Value: "secret-token"}},
 		{Secret: bws.Secret{Key: "SAFE", Value: "value"}},
 	}
-	env := buildEnvironment(entries, false, false)
+	env := buildEnvironment(nil, nil, entries, false, false)
 	for _, pair := range env {
 		key := strings.SplitN(pair, "=", 2)[0]
 		if strings.EqualFold(key, "BWS_ACCESS_TOKEN") {
@@ -393,5 +394,129 @@ func TestShellCommandFlag(t *testing.T) {
 		if got := shellCommandFlag(shell); got != want {
 			t.Errorf("shellCommandFlag(%q) = %q, want %q", shell, got, want)
 		}
+	}
+}
+
+func TestGetReturnsRecordAndFallsBackToShared(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{
+		{ID: "1", Key: "shared__TOKEN", Value: "shared"},
+		{ID: "2", Key: "photos__NAME", Value: "app"},
+	}}
+	stdout, _, err := executeForTest(t, client, "", "get", "photos", "NAME")
+	if err != nil || !strings.Contains(stdout, `"NAME"`) {
+		t.Fatalf("get app record = %q, %v", stdout, err)
+	}
+
+	stdout, _, err = executeForTest(t, client, "", "get", "photos", "TOKEN", "--include-shared")
+	if err != nil || !strings.Contains(stdout, `"source": "shared"`) {
+		t.Fatalf("get shared fallback = %q, %v", stdout, err)
+	}
+
+	if _, _, err = executeForTest(t, client, "", "get", "photos", "MISSING"); err == nil {
+		t.Fatal("expected missing-key error")
+	}
+
+	dup := &fakeClient{secrets: []bws.Secret{
+		{ID: "1", Key: "photos__TOKEN", Value: "a"},
+		{ID: "2", Key: "photos__TOKEN", Value: "b"},
+	}}
+	if _, _, err = executeForTest(t, dup, "", "get", "photos", "TOKEN"); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("expected ambiguous-key error, got %v", err)
+	}
+}
+
+func TestEditRefusesRenameCollision(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{
+		{ID: "1", Key: "photos__OLD", Value: "v"},
+		{ID: "2", Key: "photos__NEW", Value: "other"},
+	}}
+	_, _, err := executeForTest(t, client, "", "edit", "photos", "OLD", "--key", "NEW")
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected rename collision error, got %v", err)
+	}
+	if len(client.editedIDs) != 0 {
+		t.Fatal("edit mutated despite rename collision")
+	}
+}
+
+func TestEditRequiresAtLeastOneField(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{{ID: "1", Key: "photos__TOKEN"}}}
+	_, _, err := executeForTest(t, client, "", "edit", "photos", "TOKEN")
+	if err == nil || !strings.Contains(err.Error(), "at least one") {
+		t.Fatalf("expected missing-field error, got %v", err)
+	}
+	if client.listCalls != 0 {
+		t.Fatalf("edit listed secrets before validating fields: list calls=%d", client.listCalls)
+	}
+}
+
+func TestDeleteRejectsDuplicateKeys(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{{ID: "1", Key: "photos__ONE"}}}
+	_, _, err := executeForTest(t, client, "", "delete", "photos", "ONE", "ONE")
+	if err == nil || !strings.Contains(err.Error(), "more than once") {
+		t.Fatalf("expected duplicate-request error, got %v", err)
+	}
+	if len(client.deletedIDs) != 0 {
+		t.Fatal("delete mutated despite duplicate request")
+	}
+}
+
+func TestExitCodeForMapsErrorsToProcessCodes(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"child exit code", &exitCodeError{Code: 23}, 23},
+		{"signal exit code", &exitCodeError{Code: 143}, 143},
+		{"bws failure", &bws.CommandError{Stderr: "denied", Code: 5}, 5},
+		{"bws zero code", &bws.CommandError{Stderr: "odd"}, 1},
+		{"generic failure", errors.New("boom"), 1},
+	}
+	for _, testCase := range cases {
+		if got := exitCodeFor(testCase.err); got != testCase.want {
+			t.Errorf("%s: exit code = %d, want %d", testCase.name, got, testCase.want)
+		}
+	}
+	if exitCodeFor(nil) != 0 {
+		t.Error("nil error should map to exit code 0")
+	}
+}
+
+func TestRunReadsCommandFromPipedStdin(t *testing.T) {
+	client := &fakeClient{secrets: []bws.Secret{{ID: "1", Key: "photos__TOKEN", Value: "v"}}}
+	stdout, _, err := executeForTest(t, client, "printf hello", "run", "photos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(stdout) != "hello" {
+		t.Fatalf("piped-stdin run output = %q", stdout)
+	}
+}
+
+func TestRunRejectsInvalidUUIDsAsKeynamesEnvironment(t *testing.T) {
+	t.Setenv("BWS_UUIDS_AS_KEYNAMES", "not-a-bool")
+	client := &fakeClient{}
+	var stdout, stderr bytes.Buffer
+	deps := &runtimeDeps{
+		client: client,
+		stdin:  strings.NewReader(""),
+		stdout: &stdout,
+		stderr: &stderr,
+		getenv: func(key string) string {
+			if key == "BWS_PROJECT_ID" {
+				return "project-id"
+			}
+			return os.Getenv(key)
+		},
+	}
+	root := newRootCommand(deps)
+	root.SetArgs([]string{"run", "photos", "--", "true"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "BWS_UUIDS_AS_KEYNAMES") {
+		t.Fatalf("expected invalid env error, got %v", err)
+	}
+	if client.listCalls != 0 {
+		t.Fatalf("run fetched secrets before validating the flag: list calls=%d", client.listCalls)
 	}
 }
