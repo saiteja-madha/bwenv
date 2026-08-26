@@ -72,7 +72,7 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				return err
 			}
 			env := buildEnvironment(entries, noInherit, uuidsAsKeynames)
-			child := exec.CommandContext(cmd.Context(), shell, "-c", userCommand)
+			child := exec.CommandContext(cmd.Context(), shell, shellCommandFlag(shell), userCommand)
 			child.Stdin = deps.stdin
 			child.Stdout = deps.stdout
 			child.Stderr = deps.stderr
@@ -151,6 +151,22 @@ func buildEnvironment(entries []environment.Entry, noInherit, uuidsAsKeynames bo
 
 func isAccessTokenKey(key string) bool {
 	return strings.EqualFold(key, "BWS_ACCESS_TOKEN")
+}
+
+// shellCommandFlag returns the execute-string flag for the selected shell.
+// POSIX shells take -c; PowerShell requires -Command because its abbreviated
+// form -c is ambiguous in PowerShell 7 (-Command vs -CustomPipeName).
+func shellCommandFlag(shell string) string {
+	name := shell
+	if i := strings.LastIndexAny(name, `\/`); i >= 0 {
+		name = name[i+1:]
+	}
+	switch strings.ToLower(name) {
+	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+		return "-Command"
+	default:
+		return "-c"
+	}
 }
 
 func buildShellCommand(args []string, shell string) string {

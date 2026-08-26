@@ -336,3 +336,20 @@ func TestBuildShellCommandPreservesArgumentBoundaries(t *testing.T) {
 		t.Fatalf("single command string changed: %q", got)
 	}
 }
+
+func TestShellCommandFlag(t *testing.T) {
+	cases := map[string]string{
+		"sh":                                "-c",
+		"bash":                              "-c",
+		"/bin/zsh":                          "-c",
+		"powershell":                        "-Command",
+		"powershell.exe":                    "-Command",
+		"pwsh":                              "-Command",
+		"C:\\Program Files\\pwsh\\pwsh.exe": "-Command",
+	}
+	for shell, want := range cases {
+		if got := shellCommandFlag(shell); got != want {
+			t.Errorf("shellCommandFlag(%q) = %q, want %q", shell, got, want)
+		}
+	}
+}
