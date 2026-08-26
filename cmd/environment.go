@@ -8,6 +8,7 @@ import (
 
 	"bwenv/internal/bws"
 	"bwenv/internal/environment"
+	outputrenderer "bwenv/internal/output"
 
 	"github.com/spf13/cobra"
 )
@@ -61,4 +62,11 @@ func readInput(stdin io.Reader, path string) ([]byte, error) {
 		return nil, fmt.Errorf("read dotenv file %s: %w", path, err)
 	}
 	return data, nil
+}
+
+func renderDryRun(w io.Writer, format, color, message string) error {
+	if format == "none" {
+		return nil
+	}
+	return outputrenderer.Write(w, []byte(message), color)
 }

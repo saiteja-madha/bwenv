@@ -225,6 +225,48 @@ func TestDeleteResolvesAllKeysBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestMutationDryRunsHonorNoneOutputPolicy(t *testing.T) {
+	newClient := func() *fakeClient {
+		return &fakeClient{secrets: []bws.Secret{{ID: "1", Key: "photos__TOKEN", Value: "old"}}}
+	}
+
+	client := newClient()
+	stdout, _, err := executeForTest(t, client, "", "create", "photos", "NEW", "v", "--dry-run")
+	if err != nil || !strings.Contains(stdout, "create photos__NEW") || len(client.created) != 0 {
+		t.Fatalf("create dry-run = %q, %v, created=%d", stdout, err, len(client.created))
+	}
+
+	client = newClient()
+	stdout, _, err = executeForTest(t, client, "", "edit", "photos", "TOKEN", "--value=new", "--dry-run")
+	if err != nil || !strings.Contains(stdout, "edit photos__TOKEN") || len(client.editedIDs) != 0 {
+		t.Fatalf("edit dry-run = %q, %v, edited=%d", stdout, err, len(client.editedIDs))
+	}
+
+	client = newClient()
+	stdout, _, err = executeForTest(t, client, "", "delete", "photos", "TOKEN", "--dry-run")
+	if err != nil || !strings.Contains(stdout, "delete photos/TOKEN") || len(client.deletedIDs) != 0 {
+		t.Fatalf("delete dry-run = %q, %v, deleted=%d", stdout, err, len(client.deletedIDs))
+	}
+
+	for _, args := range [][]string{
+		{"--output", "none", "create", "photos", "OTHER", "v", "--dry-run"},
+		{"--output", "none", "edit", "photos", "TOKEN", "--value=x", "--dry-run"},
+		{"--output", "none", "delete", "photos", "TOKEN", "--dry-run"},
+	} {
+		client := newClient()
+		stdout, _, err := executeForTest(t, client, "", args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if stdout != "" {
+			t.Fatalf("%v printed dry-run output despite --output none: %q", args, stdout)
+		}
+		if len(client.created)+len(client.editedIDs)+len(client.deletedIDs) != 0 {
+			t.Fatalf("%v mutated during dry-run", args)
+		}
+	}
+}
+
 func TestRunStripsTokenAndAppliesSharedPrecedence(t *testing.T) {
 	t.Setenv("BWS_ACCESS_TOKEN", "must-not-leak")
 	client := &fakeClient{secrets: []bws.Secret{
