@@ -76,7 +76,7 @@ Tests must not require a real `bws` binary, token, or network. Command tests inj
 ## Delivery
 
 - `install.sh` downloads raw release binaries and requires SHA-256 verification.
-- `Formula/bwenv.rb` is a valid HEAD formula until stable formula publishing is automated.
+- `Formula/bwenv.rb` installs stable release binaries with pinned checksums and retains `--HEAD` support for source builds. After each release, the workflow regenerates the formula and opens a pull request against `main`.
 - CI tests Linux, macOS, and Windows. Release tags `v*` build five targets, embed metadata, smoke-test, checksum, and publish.
 - Never commit generated binaries, `dist/`, access tokens, or exported dotenv files.
 

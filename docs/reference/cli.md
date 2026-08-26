@@ -35,7 +35,7 @@ Authentication and routing options are forwarded to official `bws`. An explicitl
 bwenv create <app> <key> <value> [--note NOTE] [--dry-run]
 ```
 
-Creates `<app>__<key>`. It refuses to overwrite or create a second secret with the same full key. Empty values are valid.
+Creates `<app>__<key>`. It refuses to overwrite or create a second secret with the same full key. Empty values are valid. With `--dry-run`, it prints `create <app>__<key>` and writes nothing.
 
 ### import
 
@@ -71,7 +71,7 @@ Returns exactly one normalized record. With shared enabled, an app record is pre
 bwenv edit <app> <key> [--key NEW_KEY] [--value VALUE] [--note NOTE] [--dry-run]
 ```
 
-At least one editable field is required. `--value=` stores an empty value; `--note=` clears a note. Renames stay within the same app and refuse collisions.
+At least one editable field is required. `--value=` stores an empty value; `--note=` clears a note. Renames stay within the same app and refuse collisions. With `--dry-run`, it prints `edit <app>__<key>` and writes nothing.
 
 ### delete
 
@@ -79,7 +79,7 @@ At least one editable field is required. `--value=` stores an empty value; `--no
 bwenv delete <app> <key>... [--dry-run]
 ```
 
-Resolves every key before deleting anything, then uses official `bws` multi-delete. Shared fallback is intentionally not used for mutations.
+Resolves every key before deleting anything, then uses official `bws` multi-delete. With `--dry-run`, it prints `delete <app>/<key,...>` and writes nothing. Shared fallback is intentionally not used for mutations.
 
 ### export
 
@@ -96,7 +96,7 @@ bwenv run <app> [--include-shared] [--shell SHELL] [--no-inherit-env]
                 [--uuids-as-keynames] -- <command>
 ```
 
-Uses `sh` on macOS/Linux and PowerShell on Windows unless `--shell` is supplied. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
+Uses `sh` on macOS/Linux and Windows PowerShell (`powershell`, 5.x) on Windows unless `--shell` is supplied. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Because the piped command consumes stdin, the child starts with stdin at EOF — pass the command as arguments to pipe data through bwenv. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
 
 Separately supplied command arguments are quoted for the selected shell so spaces and quotes retain their argument boundaries. A single command string is passed to the shell verbatim; use that form for pipelines, redirections, variable expansion, and compound commands:
 
@@ -105,7 +105,7 @@ bwenv run immich -- printf '<%s>\n' 'value with spaces'
 bwenv run immich -- 'docker compose up -d && docker compose logs -f'
 ```
 
-The child’s exit code becomes bwenv’s exit code. Only run trusted commands.
+The child’s exit code becomes bwenv’s exit code. On Unix, a child terminated by a signal exits with the shell convention `128 + signal`. Only run trusted commands.
 
 ### completion and version
 
