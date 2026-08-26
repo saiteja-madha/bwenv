@@ -46,15 +46,19 @@ type runtimeDeps struct {
 	stdout          io.Writer
 	stderr          io.Writer
 	getenv          func(string) string
+	lookupEnv       func(string) (string, bool)
+	environ         func() []string
 	stdinIsTerminal func() bool
 }
 
 func defaultDeps() *runtimeDeps {
 	return &runtimeDeps{
-		stdin:  os.Stdin,
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-		getenv: os.Getenv,
+		stdin:     os.Stdin,
+		stdout:    os.Stdout,
+		stderr:    os.Stderr,
+		getenv:    os.Getenv,
+		lookupEnv: os.LookupEnv,
+		environ:   os.Environ,
 		stdinIsTerminal: func() bool {
 			info, err := os.Stdin.Stat()
 			return err == nil && info.Mode()&os.ModeCharDevice != 0
@@ -146,11 +150,19 @@ func Execute() int {
 	if err == nil {
 		return 0
 	}
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	return exitCodeFor(err)
+}
+
+// exitCodeFor maps a command error to a process exit code.
+func exitCodeFor(err error) int {
+	if err == nil {
+		return 0
+	}
 	var exitErr *exitCodeError
 	if errors.As(err, &exitErr) {
 		return exitErr.Code
 	}
-	fmt.Fprintln(os.Stderr, "Error:", err)
 	var commandErr *bws.CommandError
 	if errors.As(err, &commandErr) && commandErr.Code > 0 {
 		return commandErr.Code
