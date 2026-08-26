@@ -16,7 +16,7 @@ The CLI strips prefixes for output and process environments. With `--include-sha
 ```text
 bwenv create <app> <key> <value>
 bwenv import <app> <file|->
-bwenv list <app>
+bwenv list <app>|--all
 bwenv get <app> <key>
 bwenv edit <app> <key>
 bwenv delete <app> <key>...
