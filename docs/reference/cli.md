@@ -96,13 +96,14 @@ bwenv run <app> [--include-shared] [--shell SHELL] [--no-inherit-env]
                 [--uuids-as-keynames] -- <command>
 ```
 
-Uses `sh` on macOS/Linux and Windows PowerShell (`powershell`, 5.x) on Windows unless `--shell` is supplied. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Because the piped command consumes stdin, the child starts with stdin at EOF — pass the command as arguments to pipe data through bwenv. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
+Uses `sh` on macOS/Linux and Windows PowerShell (`powershell`, 5.x) on Windows unless `--shell` is supplied. PowerShell-family shells such as `powershell` and `pwsh` are invoked with `-Command`; POSIX shells use `-c`. With no command arguments, it reads a command from piped stdin; interactive stdin without a command fails immediately. Because the piped command consumes stdin, the child starts with stdin at EOF — pass the command as arguments to pipe data through bwenv. Command and shell validation happens before secrets are fetched. The child inherits the current environment by default, except every case variant of `BWS_ACCESS_TOKEN` is always removed, including a selected secret with that key. `--no-inherit-env` retains only `PATH` and required Windows shell variables before adding secrets.
 
 Separately supplied command arguments are quoted for the selected shell so spaces and quotes retain their argument boundaries. A single command string is passed to the shell verbatim; use that form for pipelines, redirections, variable expansion, and compound commands:
 
 ```bash
 bwenv run immich -- printf '<%s>\n' 'value with spaces'
 bwenv run immich -- 'docker compose up -d && docker compose logs -f'
+bwenv run immich --shell pwsh -- 'Write-Output $env:DATABASE_URL'
 ```
 
 The child’s exit code becomes bwenv’s exit code. On Unix, a child terminated by a signal exits with the shell convention `128 + signal`. Only run trusted commands.
