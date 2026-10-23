@@ -31,8 +31,7 @@ func newCreateCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				}
 			}
 			if dryRun {
-				_, err = fmt.Fprintf(deps.stdout, "create %s\n", fullKey)
-				return err
+				return renderDryRun(deps.stdout, cfg.output, cfg.color, fmt.Sprintf("create %s\n", fullKey))
 			}
 			secret, err := deps.client.CreateSecret(cmd.Context(), fullKey, args[2], cfg.projectID, note)
 			if err != nil {
