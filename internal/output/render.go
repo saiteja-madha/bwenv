@@ -17,12 +17,32 @@ import (
 )
 
 // RenderEntries writes normalized environment entries in a bws-compatible format.
+// The color policy applies only to human-oriented formats (table and tsv);
+// json, yaml, and env stay verbatim so they remain machine-readable.
 func RenderEntries(w io.Writer, entries []environment.Entry, format string, single bool, color string) error {
 	var buffer bytes.Buffer
 	if err := renderPlain(&buffer, entries, format, single); err != nil {
 		return err
 	}
-	return Write(w, buffer.Bytes(), color)
+	return WriteFormatted(w, buffer.Bytes(), format, color)
+}
+
+func humanFormat(format string) bool {
+	switch strings.ToLower(format) {
+	case "table", "tsv":
+		return true
+	default:
+		return false
+	}
+}
+
+// WriteFormatted applies color only to human-oriented output formats.
+func WriteFormatted(w io.Writer, data []byte, format, color string) error {
+	if !humanFormat(format) {
+		_, err := w.Write(data)
+		return err
+	}
+	return Write(w, data, color)
 }
 
 func renderPlain(w io.Writer, entries []environment.Entry, format string, single bool) error {

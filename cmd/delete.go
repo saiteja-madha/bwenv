@@ -35,8 +35,7 @@ func newDeleteCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				ids = append(ids, secret.ID)
 			}
 			if dryRun {
-				_, err = fmt.Fprintf(deps.stdout, "delete %s/%s\n", args[0], strings.Join(args[1:], ","))
-				return err
+				return renderDryRun(deps.stdout, cfg.output, cfg.color, fmt.Sprintf("delete %s/%s\n", args[0], strings.Join(args[1:], ",")))
 			}
 			message, err := deps.client.DeleteSecrets(cmd.Context(), ids)
 			if err != nil {

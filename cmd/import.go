@@ -138,7 +138,7 @@ func renderImportSummary(w io.Writer, summary importSummary, format, color strin
 	if err != nil {
 		return err
 	}
-	return outputrenderer.Write(w, data, color)
+	return outputrenderer.WriteFormatted(w, data, format, color)
 }
 
 func renderImportRows(summary importSummary, table bool) ([]byte, error) {
