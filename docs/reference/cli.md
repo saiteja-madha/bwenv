@@ -35,7 +35,7 @@ Authentication and routing options are forwarded to official `bws`. An explicitl
 bwenv create <app> <key> <value> [--note NOTE] [--dry-run]
 ```
 
-Creates `<app>__<key>`. It refuses to overwrite or create a second secret with the same full key. Empty values are valid. With `--dry-run`, it prints `create <app>__<key>` and writes nothing.
+Creates `<app>__<key>`. It refuses to overwrite or create a second secret with the same full key. Empty values are valid. With `--dry-run`, it prints `create <app>__<key>`, honors the global `--output` policy (`none` suppresses it), and writes nothing.
 
 ### import
 
@@ -71,7 +71,7 @@ Returns exactly one normalized record. With shared enabled, an app record is pre
 bwenv edit <app> <key> [--key NEW_KEY] [--value VALUE] [--note NOTE] [--dry-run]
 ```
 
-At least one editable field is required. `--value=` stores an empty value; `--note=` clears a note. Renames stay within the same app and refuse collisions. With `--dry-run`, it prints `edit <app>__<key>` and writes nothing.
+At least one editable field is required. `--value=` stores an empty value; `--note=` clears a note. Renames stay within the same app and refuse collisions. With `--dry-run`, it prints `edit <app>__<key>`, honors the global `--output` policy (`none` suppresses it), and writes nothing.
 
 ### delete
 
@@ -79,7 +79,7 @@ At least one editable field is required. `--value=` stores an empty value; `--no
 bwenv delete <app> <key>... [--dry-run]
 ```
 
-Resolves every key before deleting anything, then uses official `bws` multi-delete. With `--dry-run`, it prints `delete <app>/<key,...>` and writes nothing. Shared fallback is intentionally not used for mutations.
+Resolves every key before deleting anything, then uses official `bws` multi-delete. With `--dry-run`, it prints `delete <app>/<key,...>`, honors the global `--output` policy (`none` suppresses it), and writes nothing. Shared fallback is intentionally not used for mutations.
 
 ### export
 
@@ -119,7 +119,7 @@ Neither requires `bws`, authentication, or project configuration.
 
 ## Output record
 
-JSON and YAML retain official secret fields such as `id`, `projectId`, `value`, `note`, and timestamps. `key` is prefix-stripped and `source` is `app` or `shared`. Table and TSV output contain ID, key, value, source, and creation date. `none` suppresses successful output.
+JSON and YAML retain official secret fields such as `id`, `projectId`, `value`, `note`, and timestamps. `key` is prefix-stripped and `source` is `app` or `shared`. Table and TSV output contain ID, key, value, source, and creation date. `none` suppresses successful output. The color policy applies only to table and TSV; JSON, YAML, and dotenv output stay verbatim so scripts can parse them even with `--color yes`.
 
 ## Failure and security behavior
 
