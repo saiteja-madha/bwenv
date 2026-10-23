@@ -113,7 +113,7 @@ func renderApps(w io.Writer, records []appRecord, format, color string) error {
 	if err != nil {
 		return err
 	}
-	return outputrenderer.Write(w, data, color)
+	return outputrenderer.WriteFormatted(w, data, format, color)
 }
 
 func renderAppRows(records []appRecord, table bool) ([]byte, error) {
