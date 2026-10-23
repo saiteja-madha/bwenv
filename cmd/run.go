@@ -82,6 +82,9 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				return nil
 			}
 			if exitErr, ok := err.(*exec.ExitError); ok {
+				if code, signaled := signaledExitCode(exitErr); signaled {
+					return &exitCodeError{Code: code}
+				}
 				code := exitErr.ExitCode()
 				if code < 0 {
 					code = 1

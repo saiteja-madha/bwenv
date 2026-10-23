@@ -10,6 +10,7 @@ import (
 
 	"bwenv/internal/bws"
 	"bwenv/internal/environment"
+	"syscall"
 )
 
 type fakeClient struct {
@@ -252,6 +253,18 @@ func TestRunPropagatesExitCode(t *testing.T) {
 	var exitErr *exitCodeError
 	if !errors.As(err, &exitErr) || exitErr.Code != 23 {
 		t.Fatalf("expected exit code 23, got %v", err)
+	}
+}
+
+func TestRunPropagatesSignalExitCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal exit codes are a Unix convention")
+	}
+	client := &fakeClient{}
+	_, _, err := executeForTest(t, client, "", "run", "photos", "--", "kill -TERM $$")
+	var exitErr *exitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != 128+int(syscall.SIGTERM) {
+		t.Fatalf("expected exit code %d for SIGTERM, got %v", 128+int(syscall.SIGTERM), err)
 	}
 }
 
