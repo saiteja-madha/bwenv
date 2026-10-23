@@ -24,11 +24,7 @@ func RenderEntries(w io.Writer, entries []environment.Entry, format string, sing
 	if err := renderPlain(&buffer, entries, format, single); err != nil {
 		return err
 	}
-	if !humanFormat(format) {
-		_, err := w.Write(buffer.Bytes())
-		return err
-	}
-	return Write(w, buffer.Bytes(), color)
+	return WriteFormatted(w, buffer.Bytes(), format, color)
 }
 
 func humanFormat(format string) bool {
@@ -38,6 +34,15 @@ func humanFormat(format string) bool {
 	default:
 		return false
 	}
+}
+
+// WriteFormatted applies color only to human-oriented output formats.
+func WriteFormatted(w io.Writer, data []byte, format, color string) error {
+	if !humanFormat(format) {
+		_, err := w.Write(data)
+		return err
+	}
+	return Write(w, data, color)
 }
 
 func renderPlain(w io.Writer, entries []environment.Entry, format string, single bool) error {
