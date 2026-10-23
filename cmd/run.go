@@ -71,7 +71,7 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			env := buildEnvironment(entries, noInherit, uuidsAsKeynames)
+			env := buildEnvironment(deps.environ, deps.lookupEnv, entries, noInherit, uuidsAsKeynames)
 			child := exec.CommandContext(cmd.Context(), shell, shellCommandFlag(shell), userCommand)
 			child.Stdin = deps.stdin
 			child.Stdout = deps.stdout
@@ -102,17 +102,23 @@ func newRunCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 	return command
 }
 
-func buildEnvironment(entries []environment.Entry, noInherit, uuidsAsKeynames bool) []string {
+func buildEnvironment(environ func() []string, lookupEnv func(string) (string, bool), entries []environment.Entry, noInherit, uuidsAsKeynames bool) []string {
+	if environ == nil {
+		environ = os.Environ
+	}
+	if lookupEnv == nil {
+		lookupEnv = os.LookupEnv
+	}
 	env := make(map[string]string)
 	if !noInherit {
-		for _, pair := range os.Environ() {
+		for _, pair := range environ() {
 			parts := strings.SplitN(pair, "=", 2)
 			if len(parts) == 2 && !isAccessTokenKey(parts[0]) {
 				env[parts[0]] = parts[1]
 			}
 		}
 	} else {
-		if path, ok := os.LookupEnv("PATH"); ok {
+		if path, ok := lookupEnv("PATH"); ok {
 			env["PATH"] = path
 		} else if runtime.GOOS == "windows" {
 			env["PATH"] = `C:\Windows;C:\Windows\System32`
@@ -121,7 +127,7 @@ func buildEnvironment(entries []environment.Entry, noInherit, uuidsAsKeynames bo
 		}
 		if runtime.GOOS == "windows" {
 			for _, key := range []string{"SystemRoot", "ComSpec", "windir"} {
-				if value, ok := os.LookupEnv(key); ok {
+				if value, ok := lookupEnv(key); ok {
 					env[key] = value
 				}
 			}
