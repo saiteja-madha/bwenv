@@ -44,3 +44,5 @@ The official CLI requires secret values as process arguments for create/edit. Th
 ## Testing strategy
 
 Pure domain and renderer tests cover validation, precedence, duplicates, stable output, and lossless dotenv round trips. Command tests inject a fake Bitwarden client and real in-memory stdio. Runner tests cover argument construction, warning forwarding, masking, and early command validation without contacting Bitwarden. Cross-platform CI tests and builds all supported operating systems; the race detector runs on Linux.
+
+Namespace discovery uses `apps`: the command fetches once, `internal/environment` validates and sorts namespace summaries, and `internal/output` renders them without secret values. Legacy `list --all` retains its output with a deprecation warning; see [ADR 0003](decisions/0003-app-discovery.md).

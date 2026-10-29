@@ -85,7 +85,8 @@ sudo make install
 |---|---|
 | `create <app> <key> <value>` | Create one variable; refuses to overwrite |
 | `import <app> <file\|->` | Upsert variables from dotenv or stdin |
-| `list <app>` | List normalized app secrets; `--all` lists app namespaces |
+| `list <app>` | List normalized app secrets |
+| `apps` | List application namespaces and key counts, including shared |
 | `get <app> <key>` | Get one app key, optionally falling back to shared |
 | `edit <app> <key>` | Change a key, value, or note |
 | `delete <app> <key>...` | Delete one or more resolved keys |
