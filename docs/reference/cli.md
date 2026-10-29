@@ -49,6 +49,16 @@ If a dotenv file defines the same key more than once, the final definition wins.
 
 Import summaries support all global output formats. Table and TSV report one create, update, or unchanged action per key; env output reports `APP`, `CREATED`, `UPDATED`, `UNCHANGED`, and `DRY_RUN`.
 
+### apps
+
+```text
+bwenv apps
+```
+
+Lists unique, validated application namespaces and their stored key counts in sorted order, including `shared` when present. Unprefixed and malformed keys are excluded. Secret values and notes are never returned. Fetches the project once. Empty projects succeed with an empty result.
+
+Supports `json`, `yaml`, `table`, `tsv`, `env` (an `APPS` variable), and `none`.
+
 ### list
 
 ```text
@@ -57,6 +67,8 @@ bwenv list --all [--include-shared]
 ```
 
 With an app name, lists normalized secret records in deterministic key order. Shared/app collisions resolve to the app record.
+
+`--all` is deprecated: use `bwenv apps`. The legacy flag keeps its v1.2.0 output and shared filtering, and emits a warning on stderr; its meaning may change in the next major release.
 
 With `--all`, lists every app namespace found in the project with its secret count, sorted by app. Secrets that do not follow the `<app>__<KEY>` convention and the shared namespace are excluded; pass `--include-shared` to include shared. App names cannot be combined with `--all`.
 

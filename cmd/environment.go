@@ -18,6 +18,7 @@ func newEnvironmentCommands(cfg *config, deps *runtimeDeps) []*cobra.Command {
 		newCreateCommand(cfg, deps),
 		newImportCommand(cfg, deps),
 		newListCommand(cfg, deps),
+		newAppsCommand(cfg, deps),
 		newGetCommand(cfg, deps),
 		newEditCommand(cfg, deps),
 		newDeleteCommand(cfg, deps),

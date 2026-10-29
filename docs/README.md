@@ -11,6 +11,7 @@ This directory is the canonical product and engineering reference for humans and
 | [Testing](testing.md) | Contributors, maintainers | Offline verification and the opt-in disposable-project E2E smoke test |
 | [Releasing](releasing.md) | Maintainers, release operators | Release verification, Homebrew automation, and official bws compatibility |
 | [Command-surface decision](decisions/0002-bws-aligned-cli.md) | Maintainers | Why bwenv uses flat environment commands and excludes project/config wrappers |
+| [Application discovery decision](decisions/0003-app-discovery.md) | Maintainers | Namespace discovery and compatibility policy |
 | [Contributing](../CONTRIBUTING.md) | Contributors | Local workflow and pull-request expectations |
 | [Fixed issues](decisions/0001-fixed-issues.md) | Maintainers | Historical record of the initial audit; superseded where noted |
 

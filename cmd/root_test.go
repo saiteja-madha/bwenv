@@ -59,7 +59,7 @@ func (f *fakeClient) DeleteSecrets(_ context.Context, ids []string) (string, err
 	return "deleted successfully\n", nil
 }
 
-func executeForTest(t *testing.T, client *fakeClient, stdin string, args ...string) (string, string, error) {
+func executeForTest(t *testing.T, client bwsClient, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	deps := &runtimeDeps{
