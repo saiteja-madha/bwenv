@@ -11,7 +11,7 @@ func newAppsCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 		Use:   "apps",
 		Short: "List application namespaces and key counts, including shared",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			secrets, err := deps.client.ListSecrets(cmd.Context(), cfg.projectID)
 			if err != nil {
 				return err

@@ -28,7 +28,9 @@ func newListCommand(cfg *config, deps *runtimeDeps) *cobra.Command {
 				return err
 			}
 			if all {
-				fmt.Fprintln(deps.stderr, "Warning: list --all is deprecated; use bwenv apps (includes shared by default). Its meaning may change in the next major release.")
+				if _, err := fmt.Fprintln(deps.stderr, "Warning: list --all is deprecated; use bwenv apps (includes shared by default). Its meaning may change in the next major release."); err != nil {
+					return err
+				}
 				return outputrenderer.RenderApps(deps.stdout, environment.CollectApps(secrets, includeShared), cfg.output, cfg.color)
 			}
 			entries, err := environment.Merge(secrets, args[0], includeShared)
